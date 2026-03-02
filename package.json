@@ -1,0 +1,36 @@
+{
+  "name": "chat-desktop",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "concurrently \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:renderer": "vite",
+    "dev:electron": "wait-on tcp:5173 && cross-env VITE_DEV_SERVER_URL=http://localhost:5173 electron .",
+    "build": "vite build && npm run build:electron",
+    "build:electron": "cross-env NODE_ENV=production electron-builder",
+    "preview": "vite preview"
+  },
+  "build": {
+    "appId": "com.richard.chatdesktop",
+    "files": [
+      "dist",
+      "electron"
+    ],
+    "directories": {
+      "buildResources": "build"
+    }
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^6.2.1",
+    "@types/node": "^22.10.1",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "svelte": "^5.45.2",
+    "vite": "^7.3.1",
+    "wait-on": "^8.0.2"
+  }
+}

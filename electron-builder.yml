@@ -1,0 +1,24 @@
+appId: com.richard.chatdesktop
+productName: OpenClaw Chat Desktop
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**
+  - electron/**
+mac:
+  category: public.app-category.productivity
+dmg:
+  artifactName: "${productName}-${version}-mac.${ext}"
+linux:
+  target:
+    - AppImage
+    - deb
+  category: Utility
+  artifactName: "${productName}-${version}.${ext}"
+win:
+  target:
+    - nsis
+  artifactName: "${productName}-${version}.${ext}"
+extraMetadata:
+  main: electron/main.js
