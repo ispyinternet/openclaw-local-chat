@@ -1,0 +1,98 @@
+{
+  "sections": [
+    { "id": "pins", "title": "Pins", "position": 1 },
+    { "id": "active", "title": "Active", "position": 2 },
+    { "id": "recent", "title": "Recent", "position": 3 }
+  ],
+  "sessions": [
+    {
+      "id": "alpha",
+      "groupId": "pins",
+      "name": "Richard · Direct",
+      "channel": "Slack DM",
+      "preview": "Tool run finished · 2 attachments",
+      "unread": 3,
+      "chip": "tool",
+      "status": "live"
+    },
+    {
+      "id": "ops-alerts",
+      "groupId": "active",
+      "name": "#ops-alerts",
+      "channel": "Slack",
+      "preview": "Agent acknowledged incident-482",
+      "unread": 0,
+      "chip": "alert",
+      "status": "live"
+    },
+    {
+      "id": "design-handoff",
+      "groupId": "active",
+      "name": "Design Handoff",
+      "channel": "Telegram",
+      "preview": "You: pushing desktop shell tonight",
+      "unread": 0,
+      "chip": "dm",
+      "status": "idle"
+    },
+    {
+      "id": "cron-heartbeat",
+      "groupId": "recent",
+      "name": "Cron · Heartbeat",
+      "channel": "System",
+      "preview": "No drift detected in last 24h",
+      "unread": 0,
+      "chip": "system",
+      "status": "muted"
+    },
+    {
+      "id": "node-lab",
+      "groupId": "recent",
+      "name": "Node · Lab NUC",
+      "channel": "Node",
+      "preview": "Screen share ended — 17:21",
+      "unread": 5,
+      "chip": "node",
+      "status": "live"
+    }
+  ],
+  "messages": [
+    {
+      "id": "msg-1",
+      "sessionId": "alpha",
+      "role": "system",
+      "author": "Gateway",
+      "timestamp": "13:02",
+      "content": "Run 7b1a kicked off · skill `slack` · expecting 2 tool calls.",
+      "meta_pill": "run",
+      "meta_detail": "Queued"
+    },
+    {
+      "id": "msg-2",
+      "sessionId": "alpha",
+      "role": "agent",
+      "author": "OpenClaw",
+      "timestamp": "13:03",
+      "content": "Pulled the latest figma handoff. Need confirmation on button radius before publishing desktop shell. Can you review the spec in `/docs/issue-02`?",
+      "reactions": "👀,👍"
+    },
+    {
+      "id": "msg-3",
+      "sessionId": "alpha",
+      "role": "tool",
+      "author": "Browser Tool",
+      "timestamp": "13:04",
+      "content": "GET https://figma.com/file/98231 spec → 200 OK (642ms)\nExtracted assets → stored at `~/Desktop/export/issue-02`",
+      "meta_pill": "log",
+      "meta_detail": "Streaming"
+    },
+    {
+      "id": "msg-4",
+      "sessionId": "alpha",
+      "role": "user",
+      "author": "You",
+      "timestamp": "13:05",
+      "content": "Looks good. Proceed with the desktop shell stub and show me the layout once the wiring is ready."
+    }
+  ]
+}

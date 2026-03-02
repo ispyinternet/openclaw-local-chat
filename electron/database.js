@@ -1,0 +1,226 @@
+const path = require('node:path');
+const fs = require('node:fs');
+const Database = require('better-sqlite3');
+const seed = require('../shared/initial-data.json');
+
+class ChatDatabase {
+  constructor(app) {
+    this.dbPath = path.join(app.getPath('userData'), 'chat-desktop.sqlite3');
+    fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
+    this.db = new Database(this.dbPath);
+    this.db.pragma('journal_mode = WAL');
+    this.db.pragma('foreign_keys = ON');
+    this.#prepareSchema();
+    this.#seedIfNeeded();
+  }
+
+  close() {
+    if (this.db) {
+      this.db.close();
+    }
+  }
+
+  #prepareSchema() {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sections (
+        id TEXT PRIMARY KEY,
+        title TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0
+      );
+
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        group_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        channel TEXT NOT NULL,
+        preview TEXT NOT NULL,
+        unread INTEGER NOT NULL DEFAULT 0,
+        chip TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        FOREIGN KEY(group_id) REFERENCES sections(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        message_key TEXT UNIQUE,
+        role TEXT NOT NULL,
+        author TEXT NOT NULL,
+        content TEXT NOT NULL,
+        display_timestamp TEXT NOT NULL,
+        meta_pill TEXT,
+        meta_detail TEXT,
+        reactions TEXT,
+        created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
+        FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+        content,
+        session_id UNINDEXED,
+        message_key UNINDEXED,
+        tokenize = 'porter'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+        INSERT INTO messages_fts(rowid, content, session_id, message_key)
+        VALUES (new.id, new.content, new.session_id, new.message_key);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+        DELETE FROM messages_fts WHERE rowid = old.id;
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+        UPDATE messages_fts
+        SET content = new.content,
+            session_id = new.session_id,
+            message_key = new.message_key
+        WHERE rowid = new.id;
+      END;
+    `);
+  }
+
+  #seedIfNeeded() {
+    const sectionCount = this.db.prepare('SELECT COUNT(*) as count FROM sections').get().count;
+    if (sectionCount > 0) {
+      return;
+    }
+
+    const insertSection = this.db.prepare(
+      'INSERT INTO sections (id, title, position) VALUES (@id, @title, @position)'
+    );
+    const insertSession = this.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES (@id, @groupId, @name, @channel, @preview, @unread, @chip, @status)
+    `);
+    const insertMessage = this.db.prepare(`
+      INSERT INTO messages (session_id, message_key, role, author, content, display_timestamp, meta_pill, meta_detail, reactions)
+      VALUES (@sessionId, @id, @role, @author, @content, @timestamp, @meta_pill, @meta_detail, @reactions)
+    `);
+
+    const transaction = this.db.transaction(() => {
+      seed.sections.forEach(insertSection.run, insertSection);
+      seed.sessions.forEach(insertSession.run, insertSession);
+      seed.messages.forEach(insertMessage.run, insertMessage);
+    });
+
+    transaction();
+  }
+
+  getSectionsWithSessions() {
+    const sections = this.db
+      .prepare('SELECT id, title, position FROM sections ORDER BY position ASC')
+      .all();
+    const sessions = this.db
+      .prepare(`
+        SELECT id, group_id as groupId, name, channel, preview, unread, chip, status
+        FROM sessions
+        ORDER BY created_at ASC
+      `)
+      .all();
+
+    return sections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      sessions: sessions
+        .filter((session) => session.groupId === section.id)
+        .map(({ groupId, ...session }) => session)
+    }));
+  }
+
+  getInitialState() {
+    const sections = this.getSectionsWithSessions();
+    const selectedSessionId = this.getFirstSessionId();
+    const messages = selectedSessionId ? this.getMessagesForSession(selectedSessionId) : [];
+
+    return { sections, selectedSessionId, messages };
+  }
+
+  getFirstSessionId() {
+    const row = this.db.prepare('SELECT id FROM sessions ORDER BY created_at ASC LIMIT 1').get();
+    return row ? row.id : null;
+  }
+
+  getMessagesForSession(sessionId) {
+    return this.db
+      .prepare(`
+        SELECT COALESCE(message_key, printf('msg-%d', id)) as id,
+               role,
+               author,
+               display_timestamp as timestamp,
+               content,
+               meta_pill as metaPill,
+               meta_detail as metaDetail,
+               reactions
+        FROM messages
+        WHERE session_id = ?
+        ORDER BY created_at ASC
+      `)
+      .all(sessionId)
+      .map((message) => ({
+        ...message,
+        reactions: message.reactions ? message.reactions.split(',').map((item) => item.trim()).filter(Boolean) : undefined,
+        meta: message.metaPill
+          ? { pill: message.metaPill, detail: message.metaDetail || '' }
+          : undefined
+      }));
+  }
+
+  searchMessages(rawQuery) {
+    if (!rawQuery?.trim()) {
+      return [];
+    }
+
+    const query = this.#buildFtsQuery(rawQuery);
+    const stmt = this.db.prepare(`
+      SELECT
+        COALESCE(m.message_key, printf('msg-%d', m.id)) as id,
+        m.session_id as sessionId,
+        s.name as sessionName,
+        s.channel as sessionChannel,
+        m.author,
+        m.role,
+        m.display_timestamp as timestamp,
+        m.content,
+        snippet(messages_fts, 0, '<mark>', '</mark>', '…', 10) as snippet
+      FROM messages_fts
+      JOIN messages m ON messages_fts.rowid = m.id
+      JOIN sessions s ON s.id = m.session_id
+      WHERE messages_fts MATCH ?
+      ORDER BY m.created_at DESC
+      LIMIT 25
+    `);
+
+    return stmt.all(query).map((row) => ({
+      id: row.id,
+      sessionId: row.sessionId,
+      sessionName: row.sessionName,
+      sessionChannel: row.sessionChannel,
+      author: row.author,
+      role: row.role,
+      timestamp: row.timestamp,
+      snippet: row.snippet || row.content
+    }));
+  }
+
+  #buildFtsQuery(input) {
+    return input
+      .trim()
+      .split(/\s+/)
+      .map((token) => {
+        const safe = token.replace(/"/g, '');
+        if (!safe) return '';
+        return `${safe}*`;
+      })
+      .filter(Boolean)
+      .join(' ');
+  }
+}
+
+function createDatabase(app) {
+  return new ChatDatabase(app);
+}
+
+module.exports = { createDatabase };

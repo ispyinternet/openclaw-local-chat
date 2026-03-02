@@ -1,9 +1,11 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
+const { createDatabase } = require('./database');
 
 const isDev = process.env.NODE_ENV === 'development' || !!process.env.VITE_DEV_SERVER_URL;
 
 let mainWindow;
+let database;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -41,7 +43,20 @@ ipcMain.handle('app:get-version', () => ({
   platform: process.platform
 }));
 
+ipcMain.handle('data:get-initial-state', () => {
+  return database.getInitialState();
+});
+
+ipcMain.handle('data:get-messages', (_event, sessionId) => {
+  return database.getMessagesForSession(sessionId);
+});
+
+ipcMain.handle('data:search', (_event, query) => {
+  return database.searchMessages(query);
+});
+
 app.whenReady().then(() => {
+  database = createDatabase(app);
   createWindow();
 
   app.on('activate', () => {
@@ -52,6 +67,10 @@ app.whenReady().then(() => {
 });
 
 app.setAppUserModelId('com.richard.chatdesktop');
+
+app.on('before-quit', () => {
+  database?.close();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

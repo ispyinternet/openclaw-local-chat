@@ -1,166 +1,279 @@
 <script>
+  import { onMount, tick } from 'svelte';
+  import seedData from '../shared/initial-data.json';
+
   const gateway = {
     name: 'Local Gateway',
     endpoint: 'http://localhost:4111',
     status: 'online',
     heartbeat: '13s ago',
-    mode: 'Live',
-  }
-
-  const sections = [
-    {
-      title: 'Pins',
-      sessions: [
-        {
-          id: 'alpha',
-          name: 'Richard · Direct',
-          channel: 'Slack DM',
-          preview: 'Tool run finished · 2 attachments',
-          unread: 3,
-          chip: 'tool',
-          status: 'live',
-        },
-      ],
-    },
-    {
-      title: 'Active',
-      sessions: [
-        {
-          id: 'ops-alerts',
-          name: '#ops-alerts',
-          channel: 'Slack',
-          preview: 'Agent acknowledged incident-482',
-          unread: 0,
-          chip: 'alert',
-          status: 'live',
-        },
-        {
-          id: 'design-handoff',
-          name: 'Design Handoff',
-          channel: 'Telegram',
-          preview: 'You: pushing desktop shell tonight',
-          unread: 0,
-          chip: 'dm',
-          status: 'idle',
-        },
-      ],
-    },
-    {
-      title: 'Recent',
-      sessions: [
-        {
-          id: 'cron-heartbeat',
-          name: 'Cron · Heartbeat',
-          channel: 'System',
-          preview: 'No drift detected in last 24h',
-          unread: 0,
-          chip: 'system',
-          status: 'muted',
-        },
-        {
-          id: 'node-lab',
-          name: 'Node · Lab NUC',
-          channel: 'Node',
-          preview: 'Screen share ended — 17:21',
-          unread: 5,
-          chip: 'node',
-          status: 'live',
-        },
-      ],
-    },
-  ]
-
-  const selectedSession = sections[0].sessions[0]
-
-  const messages = [
-    {
-      id: 1,
-      role: 'system',
-      author: 'Gateway',
-      timestamp: '13:02',
-      content: 'Run 7b1a kicked off · skill `slack` · expecting 2 tool calls.',
-      meta: { pill: 'run', detail: 'Queued' },
-    },
-    {
-      id: 2,
-      role: 'agent',
-      author: 'OpenClaw',
-      timestamp: '13:03',
-      content:
-        'Pulled the latest figma handoff. Need confirmation on button radius before publishing desktop shell. Can you review the spec in `/docs/issue-02`?',
-      reactions: ['👀', '👍'],
-    },
-    {
-      id: 3,
-      role: 'tool',
-      author: 'Browser Tool',
-      timestamp: '13:04',
-      content:
-        'GET https://figma.com/file/98231 spec → 200 OK (642ms)\nExtracted assets → stored at `~/Desktop/export/issue-02`',
-      meta: { pill: 'log', detail: 'Streaming' },
-    },
-    {
-      id: 4,
-      role: 'user',
-      author: 'You',
-      timestamp: '13:05',
-      content: 'Looks good. Proceed with the desktop shell stub and show me the layout once the wiring is ready.',
-    },
-  ]
+    mode: 'Live'
+  };
 
   const contextItems = [
     { label: 'Channel', value: 'Slack DM' },
     { label: 'Session ID', value: 'sess_23ff901' },
     { label: 'Routing', value: 'Primary agent · tools:on' },
     { label: 'Safety', value: 'Live · elevated' },
-    { label: 'Last activity', value: '13:05 GMT' },
-  ]
+    { label: 'Last activity', value: '13:05 GMT' }
+  ];
 
   const runs = [
     {
       id: 'run-7b1a',
       title: 'Run 7b1a · slack skill',
       status: 'Streaming',
-      lines: [
-        'POST /slack.chat.postMessage',
-        'Wrote preview attachment (2.1 kB)',
-        'Waiting for ack…',
-      ],
+      lines: ['POST /slack.chat.postMessage', 'Wrote preview attachment (2.1 kB)', 'Waiting for ack…']
     },
     {
       id: 'run-7af9',
       title: 'Run 7af9 · browser',
       status: 'Complete',
-      lines: ['Visited figma.com/file/98231', 'Captured 3 layers', 'Saved bundle → /tmp/figma-export.zip'],
-    },
-  ]
+      lines: ['Visited figma.com/file/98231', 'Captured 3 layers', 'Saved bundle → /tmp/figma-export.zip']
+    }
+  ];
 
   const files = [
     { name: 'issue-02-wireframe.png', size: '412 kB', path: '~/Desktop/export/issue-02', type: 'image' },
-    { name: 'desktop-shell.json', size: '9.8 kB', path: '~/Desktop/export/issue-02', type: 'json' },
-  ]
+    { name: 'desktop-shell.json', size: '9.8 kB', path: '~/Desktop/export/issue-02', type: 'json' }
+  ];
 
   const tasks = [
     { label: 'Build desktop shell scaffold', status: 'in-progress' },
     { label: 'Wire composer to gateway', status: 'blocked' },
-    { label: 'Document keyboard map', status: 'todo' },
-  ]
-
-  let activeRightTab = 'context'
-  let composerValue = ''
+    { label: 'Document keyboard map', status: 'todo' }
+  ];
 
   const rightTabs = [
     { id: 'context', label: 'Context' },
     { id: 'runs', label: 'Runs' },
     { id: 'files', label: 'Files' },
-    { id: 'tasks', label: 'Tasks' },
-  ]
+    { id: 'tasks', label: 'Tasks' }
+  ];
 
   const statusPills = {
     online: { label: 'Online', tone: 'positive' },
     offline: { label: 'Offline', tone: 'critical' },
-    degraded: { label: 'Degraded', tone: 'warning' },
+    degraded: { label: 'Degraded', tone: 'warning' }
+  };
+
+  let sections = buildSectionsFromSeed();
+  let selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
+  let messages = buildMessagesFromSeed(selectedSessionId);
+  let selectedSession = findSession(selectedSessionId);
+  let activeRightTab = 'context';
+  let composerValue = '';
+  let loading = true;
+  let errorMessage = '';
+  let searchQuery = '';
+  let searchResults = [];
+  let searchStatus = 'idle';
+  let searchError = '';
+  let highlightedMessageId = null;
+  let searchDebounce;
+  let highlightTimeout;
+
+  const dataClient = typeof window !== 'undefined' ? window.chatDesktop?.data : undefined;
+
+  onMount(async () => {
+    await hydrateFromDatabase();
+  });
+
+  async function hydrateFromDatabase() {
+    if (!dataClient) {
+      loading = false;
+      return;
+    }
+
+    try {
+      const payload = await dataClient.getInitialState();
+      sections = payload.sections.length ? payload.sections : buildSectionsFromSeed();
+      selectedSessionId = payload.selectedSessionId ?? sections[0]?.sessions[0]?.id ?? null;
+      messages = payload.messages?.length ? payload.messages : buildMessagesFromSeed(selectedSessionId);
+      selectedSession = findSession(selectedSessionId);
+    } catch (error) {
+      console.error('Failed to read persisted conversations', error);
+      errorMessage = 'Unable to open the stored SQLite cache. Showing demo data instead.';
+      sections = buildSectionsFromSeed();
+      selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
+      messages = buildMessagesFromSeed(selectedSessionId);
+    } finally {
+      loading = false;
+    }
   }
+
+  async function selectSession(sessionId) {
+    if (!sessionId || sessionId === selectedSessionId) {
+      return;
+    }
+
+    selectedSessionId = sessionId;
+    selectedSession = findSession(sessionId);
+    try {
+      const client = dataClient ?? fallbackAdapter;
+      messages = await client.getMessages(sessionId);
+    } catch (error) {
+      console.error('Failed to load messages', error);
+      errorMessage = 'Unable to load messages for that session. Showing offline data if available.';
+      messages = buildMessagesFromSeed(sessionId);
+    }
+
+    searchQuery = '';
+    searchResults = [];
+    highlightedMessageId = null;
+  }
+
+  function buildSectionsFromSeed() {
+    return seedData.sections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      sessions: seedData.sessions.filter((session) => session.groupId === section.id)
+    }));
+  }
+
+  function buildMessagesFromSeed(sessionId) {
+    return seedData.messages
+      .filter((message) => (sessionId ? message.sessionId === sessionId : true))
+      .map(adaptSeedMessage);
+  }
+
+  function adaptSeedMessage(message) {
+    return {
+      id: message.id,
+      role: message.role,
+      author: message.author,
+      timestamp: message.timestamp,
+      content: message.content,
+      reactions: message.reactions ? message.reactions.split(',').map((item) => item.trim()).filter(Boolean) : undefined,
+      meta: message.meta_pill ? { pill: message.meta_pill, detail: message.meta_detail ?? '' } : undefined
+    };
+  }
+
+  function findSession(id) {
+    if (!id) return null;
+    for (const section of sections) {
+      const match = section.sessions.find((session) => session.id === id);
+      if (match) return match;
+    }
+    return null;
+  }
+
+  const fallbackAdapter = {
+    async getInitialState() {
+      const fallbackSections = buildSectionsFromSeed();
+      const fallbackSessionId = fallbackSections[0]?.sessions[0]?.id ?? null;
+      return {
+        sections: fallbackSections,
+        selectedSessionId: fallbackSessionId,
+        messages: buildMessagesFromSeed(fallbackSessionId)
+      };
+    },
+    async getMessages(sessionId) {
+      return buildMessagesFromSeed(sessionId);
+    },
+    async searchMessages(query) {
+      const normalized = query.trim().toLowerCase();
+      if (!normalized) return [];
+      return seedData.messages
+        .filter((message) => message.content.toLowerCase().includes(normalized))
+        .map((message) => {
+          const session = seedData.sessions.find((session) => session.id === message.sessionId);
+          return {
+            id: message.id,
+            sessionId: message.sessionId,
+            sessionName: session?.name ?? 'Session',
+            sessionChannel: session?.channel ?? 'Channel',
+            author: message.author,
+            role: message.role,
+            timestamp: message.timestamp,
+            snippet: buildHighlightedSnippet(message.content, normalized)
+          };
+        });
+    }
+  };
+
+  function escapeHtml(text) {
+    return text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] || char));
+  }
+
+  function buildHighlightedSnippet(content, query) {
+    const lower = content.toLowerCase();
+    const index = lower.indexOf(query);
+    if (index === -1) {
+      return escapeHtml(content);
+    }
+    const radius = 32;
+    const start = Math.max(0, index - radius);
+    const end = Math.min(content.length, index + query.length + radius);
+    const prefix = start > 0 ? '…' : '';
+    const suffix = end < content.length ? '…' : '';
+    const segment = content.slice(start, end);
+    const safeSegment = escapeHtml(segment);
+    const pattern = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+    return `${prefix}${safeSegment.replace(pattern, (match) => `<mark>${match}</mark>`)}${suffix}`;
+  }
+
+  function handleSearchInput(event) {
+    searchQuery = event.currentTarget.value;
+    if (searchDebounce) {
+      clearTimeout(searchDebounce);
+    }
+    searchDebounce = setTimeout(runSearch, 200);
+  }
+
+  async function runSearch() {
+    if (!searchQuery.trim()) {
+      searchResults = [];
+      searchError = '';
+      return;
+    }
+
+    searchStatus = 'loading';
+    searchError = '';
+    const client = dataClient ?? fallbackAdapter;
+    try {
+      searchResults = await client.searchMessages(searchQuery);
+    } catch (error) {
+      console.error('Search failed', error);
+      searchError = 'Unable to search messages right now.';
+      searchResults = [];
+    } finally {
+      searchStatus = 'idle';
+    }
+  }
+
+  async function jumpToSearchResult(result) {
+    await selectSession(result.sessionId);
+    await tick();
+    highlightMessage(result.id);
+  }
+
+  function highlightMessage(messageId) {
+    if (!messageId) return;
+    highlightedMessageId = messageId;
+    if (highlightTimeout) {
+      clearTimeout(highlightTimeout);
+    }
+    highlightTimeout = setTimeout(() => {
+      highlightedMessageId = null;
+    }, 4000);
+
+    if (typeof document === 'undefined') return;
+    const selector = `[data-message-id="${cssEscape(messageId)}"]`;
+    const node = document.querySelector(selector);
+    if (node) {
+      node.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function cssEscape(value) {
+    if (typeof CSS !== 'undefined' && CSS.escape) {
+      return CSS.escape(value);
+    }
+    return value.replace(/[^a-zA-Z0-9_-]/g, (char) => `\\${char}`);
+  }
+
+  $: selectedSession = findSession(selectedSessionId);
 </script>
 
 <div class="app-frame">
@@ -189,7 +302,10 @@
         <div class="session-section">
           <p class="section-label">{section.title}</p>
           {#each section.sessions as session}
-            <button class={`session-tile ${session.id === selectedSession.id ? 'active' : ''}`}>
+            <button
+              class={`session-tile ${session.id === selectedSessionId ? 'active' : ''}`}
+              on:click={() => selectSession(session.id)}
+            >
               <div class="tile-main">
                 <div>
                   <div class="name-row">
@@ -213,37 +329,79 @@
       <header class="timeline-header">
         <div>
           <p class="eyebrow">Connected as</p>
-          <h2>{selectedSession.name}</h2>
+          <h2>{selectedSession?.name ?? 'Session'}</h2>
         </div>
         <div class="timeline-actions">
-          <button class="ghost">Search ⌘F</button>
+          <input
+            class="search-input"
+            type="search"
+            aria-label="Search messages"
+            placeholder="Search messages"
+            value={searchQuery}
+            on:input={handleSearchInput}
+          />
           <button class="ghost">Jump ⌘K</button>
         </div>
       </header>
 
-      <div class="message-list">
-        {#each messages as message}
-          <article class={`message-card ${message.role}`}>
-            <header>
-              <div>
-                <span class="author">{message.author}</span>
-                <span class="timestamp">{message.timestamp}</span>
-              </div>
-              {#if message.meta}
-                <span class={`pill subtle ${message.meta.pill}`}>{message.meta.detail}</span>
+      {#if searchQuery.trim()}
+        <section class="search-results" aria-live="polite">
+          {#if searchStatus === 'loading'}
+            <p class="meta">Searching “{searchQuery}”…</p>
+          {:else if searchError}
+            <p class="meta error">{searchError}</p>
+          {:else if !searchResults.length}
+            <p class="meta">No matches for “{searchQuery}”.</p>
+          {:else}
+            {#each searchResults as result}
+              <button class="search-hit" on:click={() => jumpToSearchResult(result)}>
+                <span class="hit-session">{result.sessionName} · {result.sessionChannel}</span>
+                <span class="hit-excerpt" aria-label={`Snippet from ${result.author}`}>
+                  {@html result.snippet}
+                </span>
+                <span class="hit-meta">{result.author} · {result.timestamp}</span>
+              </button>
+            {/each}
+          {/if}
+        </section>
+      {/if}
+
+      {#if errorMessage}
+        <div class="inline-banner">{errorMessage}</div>
+      {/if}
+
+      {#if loading}
+        <div class="loading-state">Loading conversation…</div>
+      {:else if !messages.length}
+        <div class="empty-state">No messages in this session yet.</div>
+      {:else}
+        <div class="message-list">
+          {#each messages as message}
+            <article
+              class={`message-card ${message.role} ${message.id === highlightedMessageId ? 'highlight' : ''}`}
+              data-message-id={message.id}
+            >
+              <header>
+                <div>
+                  <span class="author">{message.author}</span>
+                  <span class="timestamp">{message.timestamp}</span>
+                </div>
+                {#if message.meta}
+                  <span class={`pill subtle ${message.meta.pill}`}>{message.meta.detail}</span>
+                {/if}
+              </header>
+              <pre>{message.content}</pre>
+              {#if message.reactions}
+                <div class="reactions">
+                  {#each message.reactions as reaction}
+                    <span>{reaction}</span>
+                  {/each}
+                </div>
               {/if}
-            </header>
-            <pre>{message.content}</pre>
-            {#if message.reactions}
-              <div class="reactions">
-                {#each message.reactions as reaction}
-                  <span>{reaction}</span>
-                {/each}
-              </div>
-            {/if}
-          </article>
-        {/each}
-      </div>
+            </article>
+          {/each}
+        </div>
+      {/if}
 
       <footer class="composer" aria-label="Message composer">
         <div class="composer-row">
