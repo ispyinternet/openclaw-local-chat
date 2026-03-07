@@ -13,7 +13,6 @@ dmg:
 linux:
   target:
     - AppImage
-    - deb
   category: Utility
   artifactName: "${productName}-${version}.${ext}"
 win:

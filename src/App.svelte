@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import seedData from '../shared/initial-data.json';
 
-  const gateway = {
+  let gateway = {
     name: 'Local Gateway',
     endpoint: 'http://localhost:4111',
     status: 'online',
@@ -72,11 +72,17 @@
   let highlightedMessageId = null;
   let searchDebounce;
   let highlightTimeout;
+  let showSettings = false;
+  let settingsSaving = false;
+  let resettingData = false;
+  let appMeta = { version: '0.0.0', platform: 'unknown' };
+  let preferences = { gatewayUrl: 'http://localhost:4111', theme: 'system' };
 
-  const dataClient = typeof window !== 'undefined' ? window.chatDesktop?.data : undefined;
+  const chatDesktop = typeof window !== 'undefined' ? window.chatDesktop : undefined;
+  const dataClient = chatDesktop?.data;
 
   onMount(async () => {
-    await hydrateFromDatabase();
+    await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences()]);
   });
 
   async function hydrateFromDatabase() {
@@ -99,6 +105,77 @@
       messages = buildMessagesFromSeed(selectedSessionId);
     } finally {
       loading = false;
+    }
+  }
+
+  async function hydrateAppMeta() {
+    if (!chatDesktop?.getAppMeta) return;
+    try {
+      appMeta = await chatDesktop.getAppMeta();
+    } catch (error) {
+      console.error('Unable to load app metadata', error);
+    }
+  }
+
+  async function hydratePreferences() {
+    if (!chatDesktop?.settings?.get) {
+      applyTheme(preferences.theme);
+      gateway = { ...gateway, endpoint: preferences.gatewayUrl };
+      return;
+    }
+
+    try {
+      preferences = await chatDesktop.settings.get();
+      gateway = { ...gateway, endpoint: preferences.gatewayUrl };
+      applyTheme(preferences.theme);
+    } catch (error) {
+      console.error('Unable to load preferences', error);
+      applyTheme(preferences.theme);
+    }
+  }
+
+  function applyTheme(theme) {
+    if (typeof document === 'undefined') return;
+    const resolved = theme === 'system'
+      ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+      : theme;
+    document.documentElement.dataset.theme = resolved;
+  }
+
+  async function saveSettings() {
+    if (!chatDesktop?.settings?.set) return;
+    settingsSaving = true;
+    try {
+      preferences = await chatDesktop.settings.set(preferences);
+      gateway = { ...gateway, endpoint: preferences.gatewayUrl };
+      applyTheme(preferences.theme);
+      showSettings = false;
+    } catch (error) {
+      console.error('Unable to save settings', error);
+      errorMessage = 'Failed to save settings.';
+    } finally {
+      settingsSaving = false;
+    }
+  }
+
+  async function resetLocalData() {
+    if (!dataClient?.reset || resettingData) return;
+    resettingData = true;
+    try {
+      const payload = await dataClient.reset();
+      sections = payload.sections;
+      selectedSessionId = payload.selectedSessionId;
+      messages = payload.messages;
+      selectedSession = findSession(selectedSessionId);
+      errorMessage = '';
+      searchQuery = '';
+      searchResults = [];
+      showSettings = false;
+    } catch (error) {
+      console.error('Unable to reset local data', error);
+      errorMessage = 'Failed to reset local data.';
+    } finally {
+      resettingData = false;
     }
   }
 
@@ -290,8 +367,8 @@
       </div>
     </div>
     <div class="top-actions">
+      <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
       <button class="ghost">Open logs</button>
-      <button class="ghost">Pause agent</button>
       <button class="primary">New session</button>
     </div>
   </header>
@@ -484,4 +561,49 @@
       </div>
     </aside>
   </div>
+
+  {#if showSettings}
+    <div
+      class="settings-backdrop"
+      role="presentation"
+      on:click={(event) => {
+        if (event.target === event.currentTarget) showSettings = false;
+      }}
+    >
+      <div class="settings-modal" role="dialog" aria-modal="true" aria-label="Settings">
+        <header>
+          <h3>Settings</h3>
+          <button class="ghost" on:click={() => (showSettings = false)}>Close</button>
+        </header>
+
+        <label class="settings-field">
+          <span>OpenClaw gateway URL</span>
+          <input type="url" bind:value={preferences.gatewayUrl} placeholder="http://localhost:4111" />
+        </label>
+
+        <label class="settings-field">
+          <span>Theme</span>
+          <select bind:value={preferences.theme}>
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </label>
+
+        <div class="settings-actions">
+          <button class="ghost danger" on:click={resetLocalData} disabled={resettingData}>
+            {resettingData ? 'Resetting…' : 'Reset local cache'}
+          </button>
+          <button class="primary" on:click={saveSettings} disabled={settingsSaving}>
+            {settingsSaving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+
+        <footer class="about-meta">
+          <strong>About</strong>
+          <span class="meta">Version {appMeta.version} · {appMeta.platform}</span>
+        </footer>
+      </div>
+    </div>
+  {/if}
 </div>

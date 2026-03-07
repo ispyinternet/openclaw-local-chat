@@ -56,6 +56,15 @@ class ChatDatabase {
         FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_sessions_created_at ON sessions(created_at);
+      CREATE INDEX IF NOT EXISTS idx_messages_session_created_at ON messages(session_id, created_at);
+
       CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
         content,
         session_id UNINDEXED,
@@ -84,6 +93,7 @@ class ChatDatabase {
 
   #seedIfNeeded() {
     const sectionCount = this.db.prepare('SELECT COUNT(*) as count FROM sections').get().count;
+    this.#ensureDefaultSettings();
     if (sectionCount > 0) {
       return;
     }
@@ -189,7 +199,7 @@ class ChatDatabase {
       JOIN messages m ON messages_fts.rowid = m.id
       JOIN sessions s ON s.id = m.session_id
       WHERE messages_fts MATCH ?
-      ORDER BY m.created_at DESC
+      ORDER BY rank, m.created_at DESC
       LIMIT 25
     `);
 
@@ -203,6 +213,75 @@ class ChatDatabase {
       timestamp: row.timestamp,
       snippet: row.snippet || row.content
     }));
+  }
+
+  getPreferences() {
+    const rows = this.db.prepare('SELECT key, value FROM app_settings').all();
+    const result = {
+      gatewayUrl: 'http://localhost:4111',
+      theme: 'system'
+    };
+
+    for (const row of rows) {
+      if (row.key === 'gateway_url') result.gatewayUrl = row.value;
+      if (row.key === 'theme') result.theme = row.value;
+    }
+
+    return result;
+  }
+
+  setPreferences(prefs = {}) {
+    const insert = this.db.prepare(`
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES (?, ?, strftime('%s','now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = strftime('%s','now')
+    `);
+
+    if (typeof prefs.gatewayUrl === 'string') {
+      insert.run('gateway_url', prefs.gatewayUrl.trim() || 'http://localhost:4111');
+    }
+
+    if (typeof prefs.theme === 'string') {
+      const nextTheme = ['system', 'dark', 'light'].includes(prefs.theme) ? prefs.theme : 'system';
+      insert.run('theme', nextTheme);
+    }
+
+    return this.getPreferences();
+  }
+
+  resetData() {
+    const wipe = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM messages').run();
+      this.db.prepare('DELETE FROM sessions').run();
+      this.db.prepare('DELETE FROM sections').run();
+      this.db.prepare('DELETE FROM messages_fts').run();
+    });
+
+    wipe();
+    this.#seedIfNeeded();
+
+    return this.getInitialState();
+  }
+
+  #ensureDefaultSettings() {
+    const defaults = [
+      ['gateway_url', 'http://localhost:4111'],
+      ['theme', 'system']
+    ];
+
+    const insert = this.db.prepare(`
+      INSERT INTO app_settings (key, value)
+      VALUES (?, ?)
+      ON CONFLICT(key) DO NOTHING
+    `);
+
+    const tx = this.db.transaction(() => {
+      defaults.forEach(([key, value]) => insert.run(key, value));
+    });
+
+    tx();
   }
 
   #buildFtsQuery(input) {

@@ -55,6 +55,18 @@ ipcMain.handle('data:search', (_event, query) => {
   return database.searchMessages(query);
 });
 
+ipcMain.handle('settings:get', () => {
+  return database.getPreferences();
+});
+
+ipcMain.handle('settings:set', (_event, payload) => {
+  return database.setPreferences(payload);
+});
+
+ipcMain.handle('data:reset', () => {
+  return database.resetData();
+});
+
 app.whenReady().then(() => {
   database = createDatabase(app);
   createWindow();
