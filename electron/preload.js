@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('chatDesktop', {
     getInitialState: () => ipcRenderer.invoke('data:get-initial-state'),
     getMessages: (sessionId) => ipcRenderer.invoke('data:get-messages', sessionId),
     searchMessages: (query) => ipcRenderer.invoke('data:search', query),
-    reset: () => ipcRenderer.invoke('data:reset')
+    reset: () => ipcRenderer.invoke('data:reset'),
+    sendMessage: (payload) => ipcRenderer.invoke('data:send-message', payload)
   }
 });

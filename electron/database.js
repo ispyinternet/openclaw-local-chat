@@ -178,6 +178,57 @@ class ChatDatabase {
       }));
   }
 
+  addMessage({ sessionId, content, author = 'Operator', role = 'user' }) {
+    const trimmed = typeof content === 'string' ? content.trim() : '';
+    if (!sessionId || !trimmed) {
+      throw new Error('sessionId and content are required');
+    }
+
+    const session = this.db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId);
+    if (!session) {
+      throw new Error('Session not found');
+    }
+
+    const messageKey = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const timestamp = this.#formatDisplayTimestamp(new Date());
+
+    const result = this.db
+      .prepare(`
+        INSERT INTO messages (session_id, message_key, role, author, content, display_timestamp)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      .run(sessionId, messageKey, role, author, trimmed, timestamp);
+
+    this.db
+      .prepare(`
+        UPDATE sessions
+        SET preview = ?, created_at = strftime('%s','now')
+        WHERE id = ?
+      `)
+      .run(trimmed.slice(0, 160), sessionId);
+
+    const row = this.db
+      .prepare(`
+        SELECT COALESCE(message_key, printf('msg-%d', id)) as id,
+               role,
+               author,
+               display_timestamp as timestamp,
+               content,
+               meta_pill as metaPill,
+               meta_detail as metaDetail,
+               reactions
+        FROM messages
+        WHERE id = ?
+      `)
+      .get(result.lastInsertRowid);
+
+    return {
+      ...row,
+      reactions: row.reactions ? row.reactions.split(',').map((item) => item.trim()).filter(Boolean) : undefined,
+      meta: row.metaPill ? { pill: row.metaPill, detail: row.metaDetail || '' } : undefined
+    };
+  }
+
   searchMessages(rawQuery) {
     if (!rawQuery?.trim()) {
       return [];
@@ -282,6 +333,15 @@ class ChatDatabase {
     });
 
     tx();
+  }
+
+  #formatDisplayTimestamp(date) {
+    return new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/London'
+    }).format(date);
   }
 
   #buildFtsQuery(input) {

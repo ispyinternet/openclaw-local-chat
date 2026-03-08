@@ -67,6 +67,10 @@ ipcMain.handle('data:reset', () => {
   return database.resetData();
 });
 
+ipcMain.handle('data:send-message', (_event, payload) => {
+  return database.addMessage(payload);
+});
+
 app.whenReady().then(() => {
   database = createDatabase(app);
   createWindow();

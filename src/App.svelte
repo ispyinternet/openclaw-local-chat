@@ -75,6 +75,7 @@
   let showSettings = false;
   let settingsSaving = false;
   let resettingData = false;
+  let sendingMessage = false;
   let appMeta = { version: '0.0.0', platform: 'unknown' };
   let preferences = { gatewayUrl: 'http://localhost:4111', theme: 'system' };
 
@@ -200,6 +201,57 @@
     highlightedMessageId = null;
   }
 
+  function updateSessionPreview(sessionId, preview) {
+    sections = sections.map((section) => {
+      const hasSession = section.sessions.some((session) => session.id === sessionId);
+      if (!hasSession) return section;
+
+      const nextSessions = section.sessions.map((session) => (
+        session.id === sessionId
+          ? { ...session, preview: preview.slice(0, 160) }
+          : session
+      ));
+
+      return { ...section, sessions: nextSessions };
+    });
+  }
+
+  async function sendCurrentMessage() {
+    const content = composerValue.trim();
+    if (!selectedSessionId || !content || sendingMessage) return;
+
+    sendingMessage = true;
+    errorMessage = '';
+
+    try {
+      const client = dataClient ?? fallbackAdapter;
+      const nextMessage = await client.sendMessage({
+        sessionId: selectedSessionId,
+        content,
+        role: 'user',
+        author: 'Operator'
+      });
+
+      messages = [...messages, nextMessage];
+      composerValue = '';
+      updateSessionPreview(selectedSessionId, content);
+      await tick();
+      highlightMessage(nextMessage.id);
+    } catch (error) {
+      console.error('Failed to send message', error);
+      errorMessage = 'Unable to send message right now.';
+    } finally {
+      sendingMessage = false;
+    }
+  }
+
+  function handleComposerKeydown(event) {
+    const isSubmit = event.key === 'Enter' && (event.metaKey || event.ctrlKey);
+    if (!isSubmit) return;
+    event.preventDefault();
+    sendCurrentMessage();
+  }
+
   function buildSectionsFromSeed() {
     return seedData.sections.map((section) => ({
       id: section.id,
@@ -247,6 +299,23 @@
     },
     async getMessages(sessionId) {
       return buildMessagesFromSeed(sessionId);
+    },
+    async sendMessage(payload) {
+      const now = new Date();
+      const timestamp = new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/London'
+      }).format(now);
+
+      return {
+        id: `local-${now.getTime()}`,
+        role: payload.role ?? 'user',
+        author: payload.author ?? 'Operator',
+        timestamp,
+        content: payload.content
+      };
     },
     async searchMessages(query) {
       const normalized = query.trim().toLowerCase();
@@ -486,11 +555,14 @@
             placeholder="Write a message, /command, or paste logs"
             bind:value={composerValue}
             rows="2"
+            on:keydown={handleComposerKeydown}
           ></textarea>
           <div class="composer-controls">
             <button class="ghost" title="Add attachment">Attach</button>
             <button class="ghost" title="Insert macro">Macros</button>
-            <button class="primary" disabled={!composerValue.trim()}>Send ⌘⏎</button>
+            <button class="primary" on:click={sendCurrentMessage} disabled={!composerValue.trim() || sendingMessage}>
+              {sendingMessage ? 'Sending…' : 'Send ⌘⏎'}
+            </button>
           </div>
         </div>
         <div class="composer-meta">
