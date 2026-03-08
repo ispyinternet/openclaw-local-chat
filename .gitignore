@@ -2,6 +2,7 @@ node_modules
 /dist
 /.svelte-kit
 /build
+/release
 /.idea
 /.DS_Store
 /thumbs.db
