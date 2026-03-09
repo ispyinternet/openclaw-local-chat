@@ -4,8 +4,8 @@ const Database = require('better-sqlite3');
 const seed = require('../shared/initial-data.json');
 
 class ChatDatabase {
-  constructor(app) {
-    this.dbPath = path.join(app.getPath('userData'), 'chat-desktop.sqlite3');
+  constructor(app, options = {}) {
+    this.dbPath = options.dbPath || path.join(app.getPath('userData'), 'chat-desktop.sqlite3');
     fs.mkdirSync(path.dirname(this.dbPath), { recursive: true });
     this.db = new Database(this.dbPath);
     this.db.pragma('journal_mode = WAL');
@@ -127,7 +127,7 @@ class ChatDatabase {
       .prepare(`
         SELECT id, group_id as groupId, name, channel, preview, unread, chip, status
         FROM sessions
-        ORDER BY created_at ASC
+        ORDER BY created_at DESC
       `)
       .all();
 
@@ -192,7 +192,7 @@ class ChatDatabase {
   }
 
   getFirstSessionId() {
-    const row = this.db.prepare('SELECT id FROM sessions ORDER BY created_at ASC LIMIT 1').get();
+    const row = this.db.prepare('SELECT id FROM sessions ORDER BY created_at DESC LIMIT 1').get();
     return row ? row.id : null;
   }
 
@@ -405,4 +405,4 @@ function createDatabase(app) {
   return new ChatDatabase(app);
 }
 
-module.exports = { createDatabase };
+module.exports = { createDatabase, ChatDatabase };
