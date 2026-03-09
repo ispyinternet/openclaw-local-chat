@@ -166,6 +166,12 @@ class ChatDatabase {
         created_at = strftime('%s','now')
     `);
 
+    const pruneSession = this.db.prepare(`
+      DELETE FROM sessions
+      WHERE group_id = 'gateway'
+        AND id NOT IN (${rawSessions.map(() => '?').join(',') || "''"})
+    `);
+
     const tx = this.db.transaction(() => {
       ensureGatewaySection.run();
       rawSessions.forEach((session) => {
@@ -177,6 +183,8 @@ class ChatDatabase {
           status: session.abortedLastRun ? 'degraded' : 'online'
         });
       });
+
+      pruneSession.run(...rawSessions.map((session) => session.sessionId));
     });
 
     tx();

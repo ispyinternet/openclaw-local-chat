@@ -150,7 +150,23 @@
       const nextSections = await dataClient.syncGatewaySessions();
       if (Array.isArray(nextSections) && nextSections.length) {
         sections = nextSections;
+
+        const activeExists = sections.some((section) =>
+          section.sessions.some((session) => session.id === selectedSessionId)
+        );
+
+        if (!activeExists) {
+          selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
+        }
+
         selectedSession = findSession(selectedSessionId);
+
+        if (selectedSessionId) {
+          const client = dataClient ?? fallbackAdapter;
+          messages = await client.getMessages(selectedSessionId);
+        } else {
+          messages = [];
+        }
       }
     } catch (error) {
       console.error('Unable to sync gateway sessions', error);
