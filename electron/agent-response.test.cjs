@@ -42,6 +42,22 @@ test('extracts JSON payload when output contains log lines', () => {
   assert.equal(extractAgentText(stdout), 'hello from json line');
 });
 
+test('extracts JSON payload when wrapped in markdown code fences', () => {
+  const stdout = [
+    'Agent output follows:',
+    '```json',
+    '{"reply":{"message":"from fenced json"}}',
+    '```'
+  ].join('\n');
+
+  assert.equal(extractAgentText(stdout), 'from fenced json');
+});
+
+test('extracts inline JSON object from prefixed log line', () => {
+  const stdout = 'INFO tool-result: {"reply":{"message":"from inline object"}}';
+  assert.equal(extractAgentText(stdout), 'from inline object');
+});
+
 test('returns trimmed stdout when non-json', () => {
   assert.equal(extractAgentText('  plain text  '), 'plain text');
 });

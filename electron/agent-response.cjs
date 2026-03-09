@@ -42,6 +42,33 @@ function extractTextFromPayload(payload) {
   );
 }
 
+function collectJsonCandidates(raw) {
+  const candidates = [];
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+
+    candidates.push(line);
+
+    const firstBrace = line.indexOf('{');
+    const lastBrace = line.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      candidates.push(line.slice(firstBrace, lastBrace + 1));
+    }
+  }
+
+  const fencedJson = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedJson?.[1]) {
+    candidates.unshift(fencedJson[1].trim());
+  }
+
+  return candidates;
+}
+
 function extractAgentText(stdout) {
   if (!stdout) return '';
 
@@ -51,13 +78,13 @@ function extractAgentText(stdout) {
   try {
     return extractTextFromPayload(JSON.parse(raw));
   } catch {
-    const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const candidates = collectJsonCandidates(raw);
 
-    for (let index = lines.length - 1; index >= 0; index -= 1) {
+    for (const candidate of candidates) {
       try {
-        return extractTextFromPayload(JSON.parse(lines[index]));
+        return extractTextFromPayload(JSON.parse(candidate));
       } catch {
-        // Continue scanning earlier lines for a valid JSON payload.
+        // Continue scanning for a valid JSON payload.
       }
     }
 
