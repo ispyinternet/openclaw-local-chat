@@ -76,6 +76,7 @@
   let settingsSaving = false;
   let resettingData = false;
   let sendingMessage = false;
+  let searchInputEl;
   let appMeta = { version: '0.0.0', platform: 'unknown' };
   let preferences = { gatewayUrl: 'http://localhost:4111', theme: 'system' };
 
@@ -83,7 +84,13 @@
   const dataClient = chatDesktop?.data;
 
   onMount(async () => {
+    const removeKeydown = bindKeyboardShortcuts();
     await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences()]);
+    return () => {
+      if (searchDebounce) clearTimeout(searchDebounce);
+      if (highlightTimeout) clearTimeout(highlightTimeout);
+      removeKeydown?.();
+    };
   });
 
   async function hydrateFromDatabase() {
@@ -250,6 +257,54 @@
     if (!isSubmit) return;
     event.preventDefault();
     sendCurrentMessage();
+  }
+
+  function focusSearchInput() {
+    if (!searchInputEl) return;
+    searchInputEl.focus();
+    searchInputEl.select();
+  }
+
+  function selectAdjacentSession(direction = 1) {
+    const allSessions = sections.flatMap((section) => section.sessions);
+    if (!allSessions.length) return;
+
+    const currentIndex = allSessions.findIndex((session) => session.id === selectedSessionId);
+    const startIndex = currentIndex === -1 ? 0 : currentIndex;
+    const wrappedIndex = (startIndex + direction + allSessions.length) % allSessions.length;
+    const target = allSessions[wrappedIndex];
+    if (target?.id) {
+      void selectSession(target.id);
+    }
+  }
+
+  function bindKeyboardShortcuts() {
+    if (typeof window === 'undefined') return null;
+
+    const onKeydown = (event) => {
+      const hasPrimaryModifier = event.metaKey || event.ctrlKey;
+      if (!hasPrimaryModifier) return;
+
+      if (event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        focusSearchInput();
+        return;
+      }
+
+      if (event.shiftKey && event.key === '[') {
+        event.preventDefault();
+        selectAdjacentSession(-1);
+        return;
+      }
+
+      if (event.shiftKey && event.key === ']') {
+        event.preventDefault();
+        selectAdjacentSession(1);
+      }
+    };
+
+    window.addEventListener('keydown', onKeydown);
+    return () => window.removeEventListener('keydown', onKeydown);
   }
 
   function buildSectionsFromSeed() {
@@ -484,9 +539,10 @@
             aria-label="Search messages"
             placeholder="Search messages"
             value={searchQuery}
+            bind:this={searchInputEl}
             on:input={handleSearchInput}
           />
-          <button class="ghost">Jump ⌘K</button>
+          <button class="ghost" on:click={focusSearchInput}>Jump ⌘K</button>
         </div>
       </header>
 
