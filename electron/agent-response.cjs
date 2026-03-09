@@ -30,22 +30,38 @@ function toText(value) {
   return '';
 }
 
+function extractTextFromPayload(payload) {
+  return (
+    toText(payload?.reply?.message) ||
+    toText(payload?.reply) ||
+    toText(payload?.message) ||
+    toText(payload?.text) ||
+    toText(payload?.output) ||
+    toText(payload?.response) ||
+    ''
+  );
+}
+
 function extractAgentText(stdout) {
   if (!stdout) return '';
 
+  const raw = String(stdout).trim();
+  if (!raw) return '';
+
   try {
-    const payload = JSON.parse(stdout);
-    return (
-      toText(payload?.reply?.message) ||
-      toText(payload?.reply) ||
-      toText(payload?.message) ||
-      toText(payload?.text) ||
-      toText(payload?.output) ||
-      toText(payload?.response) ||
-      ''
-    );
+    return extractTextFromPayload(JSON.parse(raw));
   } catch {
-    return String(stdout).trim();
+    const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      try {
+        return extractTextFromPayload(JSON.parse(lines[index]));
+      } catch {
+        // Continue scanning earlier lines for a valid JSON payload.
+      }
+    }
+
+    return raw;
   }
 }
 

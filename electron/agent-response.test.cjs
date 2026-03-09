@@ -33,6 +33,15 @@ test('extracts text from object and block payloads', () => {
   );
 });
 
+test('extracts JSON payload when output contains log lines', () => {
+  const stdout = [
+    'INFO starting OpenClaw agent',
+    '{"reply":{"message":"hello from json line"}}'
+  ].join('\n');
+
+  assert.equal(extractAgentText(stdout), 'hello from json line');
+});
+
 test('returns trimmed stdout when non-json', () => {
   assert.equal(extractAgentText('  plain text  '), 'plain text');
 });
