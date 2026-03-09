@@ -5,8 +5,8 @@
   let gateway = {
     name: 'Local Gateway',
     endpoint: 'http://localhost:4111',
-    status: 'online',
-    heartbeat: '13s ago',
+    status: 'degraded',
+    heartbeat: 'Never',
     mode: 'Live'
   };
 
@@ -80,6 +80,9 @@
   let searchInputEl;
   let appMeta = { version: '0.0.0', platform: 'unknown' };
   let preferences = { gatewayUrl: 'http://localhost:4111', theme: 'system' };
+  let syncInFlight = false;
+  let lastSyncedAt = null;
+  let heartbeatTimer;
 
   const chatDesktop = typeof window !== 'undefined' ? window.chatDesktop : undefined;
   const dataClient = chatDesktop?.data;
@@ -87,10 +90,16 @@
   onMount(async () => {
     const removeKeydown = bindKeyboardShortcuts();
     await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences()]);
-    await hydrateGatewaySessions();
+    await hydrateGatewaySessions({ silentError: true });
+    heartbeatTimer = setInterval(() => {
+      refreshHeartbeatLabel();
+      void hydrateGatewaySessions({ silentError: true });
+    }, 30000);
+
     return () => {
       if (searchDebounce) clearTimeout(searchDebounce);
       if (highlightTimeout) clearTimeout(highlightTimeout);
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
       removeKeydown?.();
     };
   });
@@ -144,8 +153,10 @@
     }
   }
 
-  async function hydrateGatewaySessions() {
-    if (!dataClient?.syncGatewaySessions) return;
+  async function hydrateGatewaySessions({ silentError = false } = {}) {
+    if (!dataClient?.syncGatewaySessions || syncInFlight) return;
+
+    syncInFlight = true;
     try {
       const nextSections = await dataClient.syncGatewaySessions();
       if (Array.isArray(nextSections) && nextSections.length) {
@@ -168,10 +179,38 @@
           messages = [];
         }
       }
+
+      lastSyncedAt = new Date();
+      gateway = { ...gateway, status: 'online' };
+      refreshHeartbeatLabel();
+      if (!silentError) {
+        errorMessage = '';
+      }
     } catch (error) {
       console.error('Unable to sync gateway sessions', error);
-      errorMessage = error?.message || 'Unable to sync gateway sessions.';
+      gateway = { ...gateway, status: 'offline' };
+      if (!silentError) {
+        errorMessage = error?.message || 'Unable to sync gateway sessions.';
+      }
+    } finally {
+      syncInFlight = false;
     }
+  }
+
+  function refreshHeartbeatLabel() {
+    if (!lastSyncedAt) {
+      gateway = { ...gateway, heartbeat: 'Never' };
+      return;
+    }
+
+    const seconds = Math.max(0, Math.floor((Date.now() - lastSyncedAt.getTime()) / 1000));
+    if (seconds < 60) {
+      gateway = { ...gateway, heartbeat: `${seconds}s ago` };
+      return;
+    }
+
+    const minutes = Math.floor(seconds / 60);
+    gateway = { ...gateway, heartbeat: `${minutes}m ago` };
   }
 
   async function openLogsFolder() {
@@ -557,7 +596,9 @@
     <div class="top-actions">
       <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
       <button class="ghost" on:click={openLogsFolder}>Open logs</button>
-      <button class="primary" on:click={hydrateGatewaySessions}>Sync sessions</button>
+      <button class="primary" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
+        {syncInFlight ? 'Syncing…' : 'Sync sessions'}
+      </button>
     </div>
   </header>
 

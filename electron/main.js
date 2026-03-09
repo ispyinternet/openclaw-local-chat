@@ -4,6 +4,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { createDatabase } = require('./database');
 const { extractAgentText } = require('./agent-response.cjs');
+const { normalizeGatewaySessionsPayload } = require('./gateway-sessions.cjs');
 
 const execFileAsync = promisify(execFile);
 
@@ -82,7 +83,7 @@ ipcMain.handle('data:sync-gateway-sessions', async () => {
   try {
     const { stdout } = await execFileAsync('openclaw', ['sessions', '--json'], { maxBuffer: 2 * 1024 * 1024 });
     const parsed = JSON.parse(stdout || '{}');
-    const sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+    const sessions = normalizeGatewaySessionsPayload(parsed);
     return database.upsertGatewaySessions(sessions);
   } catch (error) {
     const reason = error?.code === 'ENOENT'
