@@ -186,6 +186,10 @@ button.primary:disabled {
   overflow: hidden;
 }
 
+.shell-grid.rail-collapsed {
+  grid-template-columns: 280px minmax(0, 1fr);
+}
+
 .session-rail {
   border-right: 1px solid rgba(255, 255, 255, 0.05);
   padding: 1rem 1rem 1.5rem;

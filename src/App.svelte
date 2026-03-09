@@ -73,6 +73,7 @@
   let searchDebounce;
   let highlightTimeout;
   let showSettings = false;
+  let sideRailOpen = true;
   let settingsSaving = false;
   let resettingData = false;
   let sendingMessage = false;
@@ -309,10 +310,30 @@
     if (typeof window === 'undefined') return null;
 
     const onKeydown = (event) => {
+      if (event.key === 'Escape') {
+        if (showSettings) {
+          event.preventDefault();
+          showSettings = false;
+          return;
+        }
+
+        if (sideRailOpen) {
+          event.preventDefault();
+          sideRailOpen = false;
+        }
+        return;
+      }
+
       const hasPrimaryModifier = event.metaKey || event.ctrlKey;
       if (!hasPrimaryModifier) return;
 
       if (event.key.toLowerCase() === 'k') {
+        event.preventDefault();
+        focusSearchInput();
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'f') {
         event.preventDefault();
         focusSearchInput();
         return;
@@ -524,7 +545,7 @@
     </div>
   </header>
 
-  <div class="shell-grid">
+  <div class={`shell-grid ${sideRailOpen ? '' : 'rail-collapsed'}`}>
     <aside class="session-rail" aria-label="Session list">
       {#each sections as section}
         <div class="session-section">
@@ -570,6 +591,9 @@
             on:input={handleSearchInput}
           />
           <button class="ghost" on:click={focusSearchInput}>Jump ⌘K</button>
+          <button class="ghost" on:click={() => (sideRailOpen = !sideRailOpen)}>
+            {sideRailOpen ? 'Hide panel' : 'Show panel'}
+          </button>
         </div>
       </header>
 
@@ -655,66 +679,68 @@
       </footer>
     </section>
 
-    <aside class="side-rail" aria-label="Session context">
-      <div class="tab-strip">
-        {#each rightTabs as tab}
-          <button
-            class={tab.id === activeRightTab ? 'active' : ''}
-            on:click={() => (activeRightTab = tab.id)}
-          >
-            {tab.label}
-          </button>
-        {/each}
-      </div>
+    {#if sideRailOpen}
+      <aside class="side-rail" aria-label="Session context">
+        <div class="tab-strip">
+          {#each rightTabs as tab}
+            <button
+              class={tab.id === activeRightTab ? 'active' : ''}
+              on:click={() => (activeRightTab = tab.id)}
+            >
+              {tab.label}
+            </button>
+          {/each}
+        </div>
 
-      <div class="tab-body">
-        {#if activeRightTab === 'context'}
-          <dl class="context-grid">
-            {#each contextItems as item}
-              <div>
-                <dt>{item.label}</dt>
-                <dd>{item.value}</dd>
-              </div>
-            {/each}
-          </dl>
-        {:else if activeRightTab === 'runs'}
-          <div class="runs-stack">
-            {#each runs as run}
-              <section class="run-card">
-                <header>
-                  <strong>{run.title}</strong>
-                  <span class="meta">{run.status}</span>
-                </header>
-                <pre>
-{run.lines.join('\n')}
-                </pre>
-              </section>
-            {/each}
-          </div>
-        {:else if activeRightTab === 'files'}
-          <ul class="file-list">
-            {#each files as file}
-              <li>
+        <div class="tab-body">
+          {#if activeRightTab === 'context'}
+            <dl class="context-grid">
+              {#each contextItems as item}
                 <div>
-                  <strong>{file.name}</strong>
-                  <span class="meta">{file.size} · {file.type}</span>
+                  <dt>{item.label}</dt>
+                  <dd>{item.value}</dd>
                 </div>
-                <span class="path">{file.path}</span>
-              </li>
-            {/each}
-          </ul>
-        {:else if activeRightTab === 'tasks'}
-          <ul class="task-list">
-            {#each tasks as task}
-              <li>
-                <span class={`pill subtle ${task.status}`}>{task.status.replace('-', ' ')}</span>
-                <p>{task.label}</p>
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </div>
-    </aside>
+              {/each}
+            </dl>
+          {:else if activeRightTab === 'runs'}
+            <div class="runs-stack">
+              {#each runs as run}
+                <section class="run-card">
+                  <header>
+                    <strong>{run.title}</strong>
+                    <span class="meta">{run.status}</span>
+                  </header>
+                  <pre>
+{run.lines.join('\n')}
+                  </pre>
+                </section>
+              {/each}
+            </div>
+          {:else if activeRightTab === 'files'}
+            <ul class="file-list">
+              {#each files as file}
+                <li>
+                  <div>
+                    <strong>{file.name}</strong>
+                    <span class="meta">{file.size} · {file.type}</span>
+                  </div>
+                  <span class="path">{file.path}</span>
+                </li>
+              {/each}
+            </ul>
+          {:else if activeRightTab === 'tasks'}
+            <ul class="task-list">
+              {#each tasks as task}
+                <li>
+                  <span class={`pill subtle ${task.status}`}>{task.status.replace('-', ' ')}</span>
+                  <p>{task.label}</p>
+                </li>
+              {/each}
+            </ul>
+          {/if}
+        </div>
+      </aside>
+    {/if}
   </div>
 
   {#if showSettings}
