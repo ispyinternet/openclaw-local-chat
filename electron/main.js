@@ -5,6 +5,7 @@ const { promisify } = require('node:util');
 const { createDatabase } = require('./database');
 const { extractAgentText } = require('./agent-response.cjs');
 const { normalizeGatewaySessionsPayload } = require('./gateway-sessions.cjs');
+const { summarizeExecError } = require('./cli-error.cjs');
 
 const execFileAsync = promisify(execFile);
 
@@ -86,10 +87,8 @@ ipcMain.handle('data:sync-gateway-sessions', async () => {
     const sessions = normalizeGatewaySessionsPayload(parsed);
     return database.upsertGatewaySessions(sessions);
   } catch (error) {
-    const reason = error?.code === 'ENOENT'
-      ? 'OpenClaw CLI not found on PATH.'
-      : `Unable to sync sessions: ${error?.message || 'unknown error'}`;
-    throw new Error(reason);
+    const reason = summarizeExecError(error, 'Unable to sync sessions');
+    throw new Error(`Unable to sync sessions: ${reason}`);
   }
 });
 
@@ -105,7 +104,7 @@ ipcMain.handle('data:send-message', async (_event, payload) => {
     const { stdout } = await execFileAsync(
       'openclaw',
       ['agent', '--session-id', payload.sessionId, '--message', payload.content, '--json'],
-      { timeout: 120000, maxBuffer: 2 * 1024 * 1024 }
+      { timeout: 180000, maxBuffer: 2 * 1024 * 1024 }
     );
 
     const reply = extractAgentText(stdout) || '(No reply text returned)';
@@ -120,7 +119,7 @@ ipcMain.handle('data:send-message', async (_event, payload) => {
   } catch (error) {
     const assistantMessage = database.addMessage({
       sessionId: payload.sessionId,
-      content: `Gateway send failed: ${error?.message || 'unknown error'}`,
+      content: `Gateway send failed: ${summarizeExecError(error, 'unknown error')}`,
       role: 'system',
       author: 'System'
     });
