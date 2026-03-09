@@ -86,6 +86,7 @@
   onMount(async () => {
     const removeKeydown = bindKeyboardShortcuts();
     await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences()]);
+    await hydrateGatewaySessions();
     return () => {
       if (searchDebounce) clearTimeout(searchDebounce);
       if (highlightTimeout) clearTimeout(highlightTimeout);
@@ -139,6 +140,19 @@
     } catch (error) {
       console.error('Unable to load preferences', error);
       applyTheme(preferences.theme);
+    }
+  }
+
+  async function hydrateGatewaySessions() {
+    if (!dataClient?.syncGatewaySessions) return;
+    try {
+      const nextSections = await dataClient.syncGatewaySessions();
+      if (Array.isArray(nextSections) && nextSections.length) {
+        sections = nextSections;
+        selectedSession = findSession(selectedSessionId);
+      }
+    } catch (error) {
+      console.error('Unable to sync gateway sessions', error);
     }
   }
 
@@ -232,18 +246,20 @@
 
     try {
       const client = dataClient ?? fallbackAdapter;
-      const nextMessage = await client.sendMessage({
+      const delivery = await client.sendMessage({
         sessionId: selectedSessionId,
         content,
         role: 'user',
         author: 'Operator'
       });
 
-      messages = [...messages, nextMessage];
+      const outgoing = delivery?.userMessage ?? delivery;
+      const incoming = delivery?.assistantMessage;
+      messages = incoming ? [...messages, outgoing, incoming] : [...messages, outgoing];
       composerValue = '';
-      updateSessionPreview(selectedSessionId, content);
+      updateSessionPreview(selectedSessionId, incoming?.content || content);
       await tick();
-      highlightMessage(nextMessage.id);
+      highlightMessage((incoming || outgoing)?.id);
     } catch (error) {
       console.error('Failed to send message', error);
       errorMessage = 'Unable to send message right now.';
@@ -493,7 +509,7 @@
     <div class="top-actions">
       <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
       <button class="ghost">Open logs</button>
-      <button class="primary">New session</button>
+      <button class="primary" on:click={hydrateGatewaySessions}>Sync sessions</button>
     </div>
   </header>
 

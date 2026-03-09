@@ -1,11 +1,25 @@
 const { app, BrowserWindow, ipcMain, Menu } = require('electron');
 const path = require('path');
+const { execFile } = require('node:child_process');
+const { promisify } = require('node:util');
 const { createDatabase } = require('./database');
+
+const execFileAsync = promisify(execFile);
 
 const isDev = process.env.NODE_ENV === 'development' || !!process.env.VITE_DEV_SERVER_URL;
 
 let mainWindow;
 let database;
+
+function extractAgentText(stdout) {
+  if (!stdout) return '';
+  try {
+    const payload = JSON.parse(stdout);
+    return payload?.reply?.message || payload?.message || payload?.text || payload?.output || payload?.response || '';
+  } catch {
+    return String(stdout).trim();
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -67,8 +81,47 @@ ipcMain.handle('data:reset', () => {
   return database.resetData();
 });
 
-ipcMain.handle('data:send-message', (_event, payload) => {
-  return database.addMessage(payload);
+ipcMain.handle('data:sync-gateway-sessions', async () => {
+  const { stdout } = await execFileAsync('openclaw', ['sessions', '--json'], { maxBuffer: 2 * 1024 * 1024 });
+  const parsed = JSON.parse(stdout || '{}');
+  const sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+  return database.upsertGatewaySessions(sessions);
+});
+
+ipcMain.handle('data:send-message', async (_event, payload) => {
+  const userMessage = database.addMessage(payload);
+
+  const looksLikeGatewaySession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload?.sessionId || '');
+  if (!looksLikeGatewaySession) {
+    return { userMessage, assistantMessage: null };
+  }
+
+  try {
+    const { stdout } = await execFileAsync(
+      'openclaw',
+      ['agent', '--session-id', payload.sessionId, '--message', payload.content, '--json'],
+      { timeout: 120000, maxBuffer: 2 * 1024 * 1024 }
+    );
+
+    const reply = extractAgentText(stdout) || '(No reply text returned)';
+    const assistantMessage = database.addMessage({
+      sessionId: payload.sessionId,
+      content: reply,
+      role: 'assistant',
+      author: 'OpenClaw'
+    });
+
+    return { userMessage, assistantMessage };
+  } catch (error) {
+    const assistantMessage = database.addMessage({
+      sessionId: payload.sessionId,
+      content: `Gateway send failed: ${error?.message || 'unknown error'}`,
+      role: 'system',
+      author: 'System'
+    });
+
+    return { userMessage, assistantMessage };
+  }
 });
 
 app.whenReady().then(() => {

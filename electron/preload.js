@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('chatDesktop', {
     getMessages: (sessionId) => ipcRenderer.invoke('data:get-messages', sessionId),
     searchMessages: (query) => ipcRenderer.invoke('data:search', query),
     reset: () => ipcRenderer.invoke('data:reset'),
+    syncGatewaySessions: () => ipcRenderer.invoke('data:sync-gateway-sessions'),
     sendMessage: (payload) => ipcRenderer.invoke('data:send-message', payload)
   }
 });

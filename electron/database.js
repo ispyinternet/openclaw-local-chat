@@ -148,6 +148,41 @@ class ChatDatabase {
     return { sections, selectedSessionId, messages };
   }
 
+  upsertGatewaySessions(rawSessions = []) {
+    const ensureGatewaySection = this.db.prepare(`
+      INSERT INTO sections (id, title, position)
+      VALUES ('gateway', 'Gateway', 99)
+      ON CONFLICT(id) DO UPDATE SET title = excluded.title
+    `);
+
+    const upsertSession = this.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status, created_at)
+      VALUES (@id, 'gateway', @name, @channel, @preview, 0, 'gateway', @status, strftime('%s','now'))
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        channel = excluded.channel,
+        preview = excluded.preview,
+        status = excluded.status,
+        created_at = strftime('%s','now')
+    `);
+
+    const tx = this.db.transaction(() => {
+      ensureGatewaySection.run();
+      rawSessions.forEach((session) => {
+        upsertSession.run({
+          id: session.sessionId,
+          name: session.key,
+          channel: session.kind || 'direct',
+          preview: `${session.model || 'model'} · ${new Date(session.updatedAt || Date.now()).toLocaleString('en-GB')}`,
+          status: session.abortedLastRun ? 'degraded' : 'online'
+        });
+      });
+    });
+
+    tx();
+    return this.getSectionsWithSessions();
+  }
+
   getFirstSessionId() {
     const row = this.db.prepare('SELECT id FROM sessions ORDER BY created_at ASC LIMIT 1').get();
     return row ? row.id : null;
