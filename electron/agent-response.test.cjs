@@ -14,6 +14,25 @@ test('falls back through supported top-level keys', () => {
   assert.equal(extractAgentText(JSON.stringify({ response: 'r' })), 'r');
 });
 
+test('extracts text from object and block payloads', () => {
+  assert.equal(extractAgentText(JSON.stringify({ reply: { message: { content: 'from-content' } } })), 'from-content');
+  assert.equal(
+    extractAgentText(
+      JSON.stringify({
+        reply: {
+          message: {
+            content: [
+              { type: 'text', text: 'first line' },
+              { type: 'text', text: 'second line' }
+            ]
+          }
+        }
+      })
+    ),
+    'first line\nsecond line'
+  );
+});
+
 test('returns trimmed stdout when non-json', () => {
   assert.equal(extractAgentText('  plain text  '), 'plain text');
 });
