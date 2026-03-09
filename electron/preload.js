@@ -2,6 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('chatDesktop', {
   getAppMeta: () => ipcRenderer.invoke('app:get-version'),
+  openLogs: () => ipcRenderer.invoke('app:open-logs'),
   settings: {
     get: () => ipcRenderer.invoke('settings:get'),
     set: (payload) => ipcRenderer.invoke('settings:set', payload)

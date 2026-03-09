@@ -1,8 +1,9 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
 const path = require('path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { createDatabase } = require('./database');
+const { extractAgentText } = require('./agent-response.cjs');
 
 const execFileAsync = promisify(execFile);
 
@@ -10,16 +11,6 @@ const isDev = process.env.NODE_ENV === 'development' || !!process.env.VITE_DEV_S
 
 let mainWindow;
 let database;
-
-function extractAgentText(stdout) {
-  if (!stdout) return '';
-  try {
-    const payload = JSON.parse(stdout);
-    return payload?.reply?.message || payload?.message || payload?.text || payload?.output || payload?.response || '';
-  } catch {
-    return String(stdout).trim();
-  }
-}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -57,6 +48,12 @@ ipcMain.handle('app:get-version', () => ({
   platform: process.platform
 }));
 
+ipcMain.handle('app:open-logs', async () => {
+  const logPath = app.getPath('logs');
+  await shell.openPath(logPath);
+  return { ok: true, path: logPath };
+});
+
 ipcMain.handle('data:get-initial-state', () => {
   return database.getInitialState();
 });
@@ -82,10 +79,17 @@ ipcMain.handle('data:reset', () => {
 });
 
 ipcMain.handle('data:sync-gateway-sessions', async () => {
-  const { stdout } = await execFileAsync('openclaw', ['sessions', '--json'], { maxBuffer: 2 * 1024 * 1024 });
-  const parsed = JSON.parse(stdout || '{}');
-  const sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
-  return database.upsertGatewaySessions(sessions);
+  try {
+    const { stdout } = await execFileAsync('openclaw', ['sessions', '--json'], { maxBuffer: 2 * 1024 * 1024 });
+    const parsed = JSON.parse(stdout || '{}');
+    const sessions = Array.isArray(parsed.sessions) ? parsed.sessions : [];
+    return database.upsertGatewaySessions(sessions);
+  } catch (error) {
+    const reason = error?.code === 'ENOENT'
+      ? 'OpenClaw CLI not found on PATH.'
+      : `Unable to sync sessions: ${error?.message || 'unknown error'}`;
+    throw new Error(reason);
+  }
 });
 
 ipcMain.handle('data:send-message', async (_event, payload) => {

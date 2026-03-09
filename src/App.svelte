@@ -153,6 +153,17 @@
       }
     } catch (error) {
       console.error('Unable to sync gateway sessions', error);
+      errorMessage = error?.message || 'Unable to sync gateway sessions.';
+    }
+  }
+
+  async function openLogsFolder() {
+    if (!chatDesktop?.openLogs) return;
+    try {
+      await chatDesktop.openLogs();
+    } catch (error) {
+      console.error('Unable to open logs folder', error);
+      errorMessage = 'Failed to open logs folder.';
     }
   }
 
@@ -508,7 +519,7 @@
     </div>
     <div class="top-actions">
       <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
-      <button class="ghost">Open logs</button>
+      <button class="ghost" on:click={openLogsFolder}>Open logs</button>
       <button class="primary" on:click={hydrateGatewaySessions}>Sync sessions</button>
     </div>
   </header>
