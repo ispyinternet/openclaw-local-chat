@@ -14,6 +14,19 @@ test('falls back through supported top-level keys', () => {
   assert.equal(extractAgentText(JSON.stringify({ response: 'r' })), 'r');
 });
 
+test('extracts text from gateway result payloads', () => {
+  const value = extractAgentText(JSON.stringify({
+    result: {
+      payloads: [
+        { text: 'hello from payload 1' },
+        { text: 'hello from payload 2' }
+      ]
+    }
+  }));
+
+  assert.equal(value, 'hello from payload 1\nhello from payload 2');
+});
+
 test('extracts text from object and block payloads', () => {
   assert.equal(extractAgentText(JSON.stringify({ reply: { message: { content: 'from-content' } } })), 'from-content');
   assert.equal(

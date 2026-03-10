@@ -34,6 +34,9 @@ function extractTextFromPayload(payload) {
   return (
     toText(payload?.reply?.message) ||
     toText(payload?.reply) ||
+    toText(payload?.result?.payloads) ||
+    toText(payload?.payloads) ||
+    toText(payload?.result?.message) ||
     toText(payload?.message) ||
     toText(payload?.text) ||
     toText(payload?.output) ||
