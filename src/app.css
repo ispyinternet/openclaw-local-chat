@@ -561,6 +561,13 @@ button.primary:disabled {
   color: #ffbe5c;
 }
 
+.inline-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .message-card.highlight {
   box-shadow: 0 0 0 2px rgba(122, 123, 255, 0.45) inset;
 }

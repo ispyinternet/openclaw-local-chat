@@ -223,6 +223,10 @@
     }
   }
 
+  async function retryGatewaySync() {
+    await hydrateGatewaySessions();
+  }
+
   function applyTheme(theme) {
     if (typeof document === 'undefined') return;
     const resolved = theme === 'system'
@@ -691,7 +695,14 @@
       {/if}
 
       {#if errorMessage}
-        <div class="inline-banner">{errorMessage}</div>
+        <div class="inline-banner">
+          <span>{errorMessage}</span>
+          {#if dataClient?.syncGatewaySessions}
+            <button class="ghost" on:click={retryGatewaySync} disabled={syncInFlight}>
+              {syncInFlight ? 'Retrying…' : 'Retry sync'}
+            </button>
+          {/if}
+        </div>
       {/if}
 
       {#if loading}
