@@ -278,6 +278,10 @@ class ChatDatabase {
     }
 
     const query = this.#buildFtsQuery(rawQuery);
+    if (!query) {
+      return [];
+    }
+
     const stmt = this.db.prepare(`
       SELECT
         COALESCE(m.message_key, printf('msg-%d', m.id)) as id,
@@ -297,16 +301,20 @@ class ChatDatabase {
       LIMIT 25
     `);
 
-    return stmt.all(query).map((row) => ({
-      id: row.id,
-      sessionId: row.sessionId,
-      sessionName: row.sessionName,
-      sessionChannel: row.sessionChannel,
-      author: row.author,
-      role: row.role,
-      timestamp: row.timestamp,
-      snippet: row.snippet || row.content
-    }));
+    try {
+      return stmt.all(query).map((row) => ({
+        id: row.id,
+        sessionId: row.sessionId,
+        sessionName: row.sessionName,
+        sessionChannel: row.sessionChannel,
+        author: row.author,
+        role: row.role,
+        timestamp: row.timestamp,
+        snippet: row.snippet || row.content
+      }));
+    } catch {
+      return [];
+    }
   }
 
   getPreferences() {
@@ -432,12 +440,9 @@ class ChatDatabase {
     return input
       .trim()
       .split(/\s+/)
-      .map((token) => {
-        const safe = token.replace(/"/g, '');
-        if (!safe) return '';
-        return `${safe}*`;
-      })
+      .map((token) => token.replace(/[^\p{L}\p{N}_-]+/gu, ''))
       .filter(Boolean)
+      .map((token) => `${token}*`)
       .join(' ');
   }
 }
