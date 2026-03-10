@@ -145,6 +145,9 @@ app.whenReady().then(() => {
       createWindow();
     }
   });
+}).catch((error) => {
+  console.error('Failed to initialize app:', error);
+  app.quit();
 });
 
 app.setAppUserModelId('com.richard.chatdesktop');
