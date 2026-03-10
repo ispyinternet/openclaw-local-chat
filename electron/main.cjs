@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, Menu, shell } = require('electron');
 const path = require('path');
 const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
-const { createDatabase } = require('./database');
+const { createDatabase } = require('./database.cjs');
 const { extractAgentText } = require('./agent-response.cjs');
 const { normalizeGatewaySessionsPayload } = require('./gateway-sessions.cjs');
 const { summarizeExecError } = require('./cli-error.cjs');
@@ -22,7 +22,7 @@ function createWindow() {
     minHeight: 640,
     titleBarStyle: 'hiddenInset',
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: false

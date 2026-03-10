@@ -17,7 +17,7 @@ function loadCommonJsModule(filePath) {
   return mod.exports;
 }
 
-const { ChatDatabase } = loadCommonJsModule(path.join(__dirname, 'database.js'));
+const { ChatDatabase } = loadCommonJsModule(path.join(__dirname, 'database.cjs'));
 
 function createDb() {
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'chat-desktop-db-'));

@@ -20,4 +20,4 @@ win:
     - nsis
   artifactName: "${productName}-${version}.${ext}"
 extraMetadata:
-  main: electron/main.js
+  main: electron/main.cjs
