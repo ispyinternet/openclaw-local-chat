@@ -324,6 +324,45 @@ class ChatDatabase {
     return result;
   }
 
+  getComposerDrafts() {
+    const row = this.db.prepare("SELECT value FROM app_settings WHERE key = 'session_drafts'").get();
+    if (!row?.value) {
+      return {};
+    }
+
+    try {
+      const parsed = JSON.parse(row.value);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        return {};
+      }
+
+      return Object.fromEntries(
+        Object.entries(parsed)
+          .filter(([sessionId, draft]) => typeof sessionId === 'string' && typeof draft === 'string')
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  setComposerDrafts(drafts = {}) {
+    const normalized = Object.fromEntries(
+      Object.entries(drafts)
+        .filter(([sessionId, draft]) => typeof sessionId === 'string' && typeof draft === 'string' && draft.trim())
+        .map(([sessionId, draft]) => [sessionId, draft])
+    );
+
+    this.db.prepare(`
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ('session_drafts', ?, strftime('%s','now'))
+      ON CONFLICT(key) DO UPDATE SET
+        value = excluded.value,
+        updated_at = strftime('%s','now')
+    `).run(JSON.stringify(normalized));
+
+    return normalized;
+  }
+
   setPreferences(prefs = {}) {
     const insert = this.db.prepare(`
       INSERT INTO app_settings (key, value, updated_at)
@@ -351,6 +390,7 @@ class ChatDatabase {
       this.db.prepare('DELETE FROM sessions').run();
       this.db.prepare('DELETE FROM sections').run();
       this.db.prepare('DELETE FROM messages_fts').run();
+      this.db.prepare("UPDATE app_settings SET value = '{}' WHERE key = 'session_drafts'").run();
     });
 
     wipe();
@@ -362,7 +402,8 @@ class ChatDatabase {
   #ensureDefaultSettings() {
     const defaults = [
       ['gateway_url', 'http://localhost:4111'],
-      ['theme', 'system']
+      ['theme', 'system'],
+      ['session_drafts', '{}']
     ];
 
     const insert = this.db.prepare(`

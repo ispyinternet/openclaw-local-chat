@@ -68,6 +68,14 @@ ipcMain.handle('data:search', (_event, query) => {
   return database.searchMessages(query);
 });
 
+ipcMain.handle('data:get-composer-drafts', () => {
+  return database.getComposerDrafts();
+});
+
+ipcMain.handle('data:set-composer-drafts', (_event, drafts) => {
+  return database.setComposerDrafts(drafts);
+});
+
 ipcMain.handle('settings:get', () => {
   return database.getPreferences();
 });

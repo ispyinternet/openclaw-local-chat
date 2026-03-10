@@ -73,6 +73,7 @@
   let highlightedMessageId = null;
   let searchDebounce;
   let highlightTimeout;
+  let draftPersistTimer;
   let showSettings = false;
   let sideRailOpen = true;
   let settingsSaving = false;
@@ -90,7 +91,7 @@
 
   onMount(async () => {
     const removeKeydown = bindKeyboardShortcuts();
-    await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences()]);
+    await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences(), hydrateComposerDrafts()]);
     await hydrateGatewaySessions({ silentError: true });
     heartbeatTimer = setInterval(() => {
       refreshHeartbeatLabel();
@@ -100,6 +101,7 @@
     return () => {
       if (searchDebounce) clearTimeout(searchDebounce);
       if (highlightTimeout) clearTimeout(highlightTimeout);
+      if (draftPersistTimer) clearTimeout(draftPersistTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       removeKeydown?.();
     };
@@ -153,6 +155,17 @@
     } catch (error) {
       console.error('Unable to load preferences', error);
       applyTheme(preferences.theme);
+    }
+  }
+
+  async function hydrateComposerDrafts() {
+    if (!dataClient?.getComposerDrafts) return;
+
+    try {
+      sessionDrafts = await dataClient.getComposerDrafts();
+      restoreDraftForSession(selectedSessionId);
+    } catch (error) {
+      console.error('Unable to load composer drafts', error);
     }
   }
 
@@ -265,6 +278,7 @@
       messages = payload.messages;
       selectedSession = findSession(selectedSessionId);
       sessionDrafts = {};
+      queuePersistDrafts();
       restoreDraftForSession(selectedSessionId);
       errorMessage = '';
       searchQuery = '';
@@ -359,12 +373,28 @@
     persistDraftForSession(selectedSessionId, nextValue);
   }
 
+  function queuePersistDrafts() {
+    if (!dataClient?.setComposerDrafts) return;
+    if (draftPersistTimer) {
+      clearTimeout(draftPersistTimer);
+    }
+
+    draftPersistTimer = setTimeout(async () => {
+      try {
+        await dataClient.setComposerDrafts(sessionDrafts);
+      } catch (error) {
+        console.error('Unable to persist composer drafts', error);
+      }
+    }, 200);
+  }
+
   function persistDraftForSession(sessionId, value) {
     if (!sessionId) return;
     const nextValue = value ?? '';
     if (!nextValue.trim()) {
       const { [sessionId]: _removed, ...rest } = sessionDrafts;
       sessionDrafts = rest;
+      queuePersistDrafts();
       return;
     }
 
@@ -372,6 +402,7 @@
       ...sessionDrafts,
       [sessionId]: nextValue
     };
+    queuePersistDrafts();
   }
 
   function restoreDraftForSession(sessionId) {
