@@ -104,14 +104,15 @@ ipcMain.handle('data:send-message', async (_event, payload) => {
   const userMessage = database.addMessage(payload);
 
   const looksLikeGatewaySession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload?.sessionId || '');
-  if (!looksLikeGatewaySession) {
-    return { userMessage, assistantMessage: null };
-  }
 
   try {
+    const args = looksLikeGatewaySession
+      ? ['agent', '--session-id', payload.sessionId, '--message', payload.content, '--json']
+      : ['agent', '--message', payload.content, '--json'];
+
     const { stdout } = await execFileAsync(
       'openclaw',
-      ['agent', '--session-id', payload.sessionId, '--message', payload.content, '--json'],
+      args,
       { timeout: 180000, maxBuffer: 2 * 1024 * 1024 }
     );
 
