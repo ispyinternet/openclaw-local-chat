@@ -308,6 +308,11 @@
     const content = composerValue.trim();
     if (!selectedSessionId || !content || sendingMessage) return;
 
+    if (isGatewaySessionId(selectedSessionId) && gateway.status === 'offline') {
+      errorMessage = 'Gateway is offline. Reconnect or sync sessions before sending.';
+      return;
+    }
+
     sendingMessage = true;
     errorMessage = '';
 
@@ -434,6 +439,10 @@
       reactions: message.reactions ? message.reactions.split(',').map((item) => item.trim()).filter(Boolean) : undefined,
       meta: message.meta_pill ? { pill: message.meta_pill, detail: message.meta_detail ?? '' } : undefined
     };
+  }
+
+  function isGatewaySessionId(value) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value || '');
   }
 
   function findSession(id) {
@@ -578,6 +587,11 @@
   }
 
   $: selectedSession = findSession(selectedSessionId);
+  $: selectedSessionIsGateway = isGatewaySessionId(selectedSessionId);
+  $: sendDisabled = !composerValue.trim() || sendingMessage || (selectedSessionIsGateway && gateway.status === 'offline');
+  $: composerGatewayStatus = selectedSessionIsGateway
+    ? (gateway.status === 'offline' ? 'Gateway offline' : `Gateway ${gateway.status}`)
+    : 'Local session';
 </script>
 
 <div class="app-frame">
@@ -724,14 +738,14 @@
           <div class="composer-controls">
             <button class="ghost" title="Add attachment">Attach</button>
             <button class="ghost" title="Insert macro">Macros</button>
-            <button class="primary" on:click={sendCurrentMessage} disabled={!composerValue.trim() || sendingMessage}>
+            <button class="primary" on:click={sendCurrentMessage} disabled={sendDisabled}>
               {sendingMessage ? 'Sending…' : 'Send ⌘⏎'}
             </button>
           </div>
         </div>
         <div class="composer-meta">
           <span class="meta">Send as · Operator</span>
-          <span class="meta">Gateway ready</span>
+          <span class="meta">{composerGatewayStatus}</span>
         </div>
       </footer>
     </section>
