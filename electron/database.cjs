@@ -111,9 +111,9 @@ class ChatDatabase {
     `);
 
     const transaction = this.db.transaction(() => {
-      seed.sections.forEach(insertSection.run, insertSection);
-      seed.sessions.forEach(insertSession.run, insertSession);
-      seed.messages.forEach(insertMessage.run, insertMessage);
+      seed.sections.forEach((section) => insertSection.run(section));
+      seed.sessions.forEach((session) => insertSession.run(session));
+      seed.messages.forEach((message) => insertMessage.run(message));
     });
 
     transaction();
