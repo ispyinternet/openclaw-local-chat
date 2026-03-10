@@ -63,6 +63,7 @@
   let selectedSession = findSession(selectedSessionId);
   let activeRightTab = 'context';
   let composerValue = '';
+  let sessionDrafts = {};
   let loading = true;
   let errorMessage = '';
   let searchQuery = '';
@@ -116,12 +117,14 @@
       selectedSessionId = payload.selectedSessionId ?? sections[0]?.sessions[0]?.id ?? null;
       messages = payload.messages?.length ? payload.messages : buildMessagesFromSeed(selectedSessionId);
       selectedSession = findSession(selectedSessionId);
+      restoreDraftForSession(selectedSessionId);
     } catch (error) {
       console.error('Failed to read persisted conversations', error);
       errorMessage = 'Unable to open the stored SQLite cache. Showing demo data instead.';
       sections = buildSectionsFromSeed();
       selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
       messages = buildMessagesFromSeed(selectedSessionId);
+      restoreDraftForSession(selectedSessionId);
     } finally {
       loading = false;
     }
@@ -171,6 +174,7 @@
         }
 
         selectedSession = findSession(selectedSessionId);
+        restoreDraftForSession(selectedSessionId);
 
         if (selectedSessionId) {
           const client = dataClient ?? fallbackAdapter;
@@ -260,6 +264,8 @@
       selectedSessionId = payload.selectedSessionId;
       messages = payload.messages;
       selectedSession = findSession(selectedSessionId);
+      sessionDrafts = {};
+      restoreDraftForSession(selectedSessionId);
       errorMessage = '';
       searchQuery = '';
       searchResults = [];
@@ -277,6 +283,7 @@
       return;
     }
 
+    persistDraftForSession(selectedSessionId, composerValue);
     selectedSessionId = sessionId;
     selectedSession = findSession(sessionId);
     try {
@@ -291,6 +298,7 @@
     searchQuery = '';
     searchResults = [];
     highlightedMessageId = null;
+    restoreDraftForSession(sessionId);
   }
 
   function updateSessionPreview(sessionId, preview) {
@@ -333,6 +341,7 @@
       const incoming = delivery?.assistantMessage;
       messages = incoming ? [...messages, outgoing, incoming] : [...messages, outgoing];
       composerValue = '';
+      persistDraftForSession(selectedSessionId, '');
       updateSessionPreview(selectedSessionId, incoming?.content || content);
       await tick();
       highlightMessage((incoming || outgoing)?.id);
@@ -342,6 +351,31 @@
     } finally {
       sendingMessage = false;
     }
+  }
+
+  function handleComposerInput(event) {
+    const nextValue = event.currentTarget.value;
+    composerValue = nextValue;
+    persistDraftForSession(selectedSessionId, nextValue);
+  }
+
+  function persistDraftForSession(sessionId, value) {
+    if (!sessionId) return;
+    const nextValue = value ?? '';
+    if (!nextValue.trim()) {
+      const { [sessionId]: _removed, ...rest } = sessionDrafts;
+      sessionDrafts = rest;
+      return;
+    }
+
+    sessionDrafts = {
+      ...sessionDrafts,
+      [sessionId]: nextValue
+    };
+  }
+
+  function restoreDraftForSession(sessionId) {
+    composerValue = sessionId ? (sessionDrafts[sessionId] ?? '') : '';
   }
 
   function handleComposerKeydown(event) {
@@ -742,8 +776,9 @@
         <div class="composer-row">
           <textarea
             placeholder="Write a message, /command, or paste logs"
-            bind:value={composerValue}
+            value={composerValue}
             rows="2"
+            on:input={handleComposerInput}
             on:keydown={handleComposerKeydown}
           ></textarea>
           <div class="composer-controls">
