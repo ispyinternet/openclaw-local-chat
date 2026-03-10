@@ -108,7 +108,7 @@ ipcMain.handle('data:send-message', async (_event, payload) => {
   try {
     const args = looksLikeGatewaySession
       ? ['agent', '--session-id', payload.sessionId, '--message', payload.content, '--json']
-      : ['agent', '--message', payload.content, '--json'];
+      : ['agent', '--agent', 'main', '--message', payload.content, '--json'];
 
     const { stdout } = await execFileAsync(
       'openclaw',
