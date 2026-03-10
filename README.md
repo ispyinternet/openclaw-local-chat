@@ -1,43 +1,64 @@
-# Svelte + Vite
+# OpenClaw Chat Desktop
 
-This template should help get you started developing with Svelte in Vite.
+A local-first Electron + Svelte desktop client for OpenClaw sessions.
 
-## Recommended IDE Setup
+## What it does
 
-[VS Code](https://code.visualstudio.com/) + [Svelte](https://marketplace.visualstudio.com/items?itemName=svelte.svelte-vscode).
+- Loads/saves sessions and messages in a local SQLite cache
+- Syncs gateway sessions via `openclaw sessions --json`
+- Sends messages to gateway-backed sessions via `openclaw agent --session-id ... --json`
+- Shows search, session switching, status/heartbeat, and basic settings
+- Surfaces CLI failures with clearer timeout/exit/stderr diagnostics
 
-## Need an official Svelte framework?
+## Requirements
 
-Check out [SvelteKit](https://github.com/sveltejs/kit#readme), which is also powered by Vite. Deploy anywhere with its serverless-first approach and adapt to various platforms, with out of the box support for TypeScript, SCSS, and Less, and easily-added support for mdsvex, GraphQL, PostCSS, Tailwind CSS, and more.
+- Node.js 22+
+- OpenClaw CLI installed and available on `PATH`
+- A reachable local/remote OpenClaw gateway
 
-## Technical considerations
+## Development
 
-**Why use this over SvelteKit?**
-
-- It brings its own routing solution which might not be preferable for some users.
-- It is first and foremost a framework that just happens to use Vite under the hood, not a Vite app.
-
-This template contains as little as possible to get started with Vite + Svelte, while taking into account the developer experience with regards to HMR and intellisense. It demonstrates capabilities on par with the other `create-vite` templates and is a good starting point for beginners dipping their toes into a Vite + Svelte project.
-
-Should you later need the extended capabilities and extensibility provided by SvelteKit, the template has been structured similarly to SvelteKit so that it is easy to migrate.
-
-**Why include `.vscode/extensions.json`?**
-
-Other templates indirectly recommend extensions via the README, but this file allows VS Code to prompt the user to install the recommended extension upon opening the project.
-
-**Why enable `checkJs` in the JS template?**
-
-It is likely that most cases of changing variable types in runtime are likely to be accidental, rather than deliberate. This provides advanced typechecking out of the box. Should you like to take advantage of the dynamically-typed nature of JavaScript, it is trivial to change the configuration.
-
-**Why is HMR not preserving my local component state?**
-
-HMR state preservation comes with a number of gotchas! It has been disabled by default in both `svelte-hmr` and `@sveltejs/vite-plugin-svelte` due to its often surprising behavior. You can read the details [here](https://github.com/sveltejs/svelte-hmr/tree/master/packages/svelte-hmr#preservation-of-local-state).
-
-If you have state that's important to retain within a component, consider creating an external store which would not be replaced by HMR.
-
-```js
-// store.js
-// An extremely simple external store
-import { writable } from 'svelte/store'
-export default writable(0)
+```bash
+npm install
+npm run dev
 ```
+
+Dev mode runs:
+- Vite renderer on `http://localhost:5173`
+- Electron app attached to that renderer
+
+## Tests
+
+```bash
+npm test
+```
+
+Current tests cover:
+- Agent response extraction/parsing
+- Gateway session payload normalization
+- CLI error summarization for timeout/exit/stderr cases
+
+## Build (Linux AppImage)
+
+```bash
+npm run build
+```
+
+This builds the renderer and packages Electron using `electron-builder`.
+
+Output:
+- `release/OpenClaw Chat Desktop-<version>.AppImage`
+
+## Keyboard shortcuts
+
+- `⌘/Ctrl + K` — focus search
+- `⌘/Ctrl + F` — focus search
+- `⌘/Ctrl + Shift + [` — previous session
+- `⌘/Ctrl + Shift + ]` — next session
+- `Esc` — close settings or collapse right panel
+
+## Notes
+
+- Non-gateway/demo sessions are handled locally (no CLI send)
+- Settings currently include gateway URL and theme
+- If the OpenClaw CLI is missing, sync/send errors will explicitly state that
