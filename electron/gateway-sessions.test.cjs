@@ -74,6 +74,18 @@ test('parseGatewaySessionsOutput extracts inline JSON array from log output', ()
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput extracts balanced inline JSON when trailing text contains brackets', () => {
+  const sessions = [{ sessionId: 'i2b' }];
+  const stdout = `trace: payload=${JSON.stringify({ sessions })} trailing [debug] marker`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput handles inline JSON with escaped quotes and braces in strings', () => {
+  const sessions = [{ sessionId: 'i2c', note: 'literal } and ] and \\"quotes\\"' }];
+  const stdout = `trace: payload ${JSON.stringify({ sessions })} done`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
 test('parseGatewaySessionsOutput extracts data: prefixed JSON array line', () => {
   const sessions = [{ sessionId: 'i3' }];
   const stdout = ['event: snapshot', `data: ${JSON.stringify(sessions)}`].join('\n');

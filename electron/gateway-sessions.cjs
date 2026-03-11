@@ -1,20 +1,65 @@
+function extractBalancedJson(text, startIndex) {
+  if (startIndex < 0 || startIndex >= text.length) return null;
+
+  const opening = text[startIndex];
+  const closing = opening === '{' ? '}' : opening === '[' ? ']' : null;
+  if (!closing) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === '\\') {
+        escaping = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === opening) {
+      depth += 1;
+      continue;
+    }
+
+    if (char === closing) {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
 function extractInlineJson(line) {
   const firstBrace = line.indexOf('{');
   const firstBracket = line.indexOf('[');
 
-  const starts = [
-    { index: firstBrace, open: '{', close: '}' },
-    { index: firstBracket, open: '[', close: ']' },
-  ].filter((entry) => entry.index !== -1)
-    .sort((a, b) => a.index - b.index);
+  const starts = [firstBrace, firstBracket]
+    .filter((index) => index !== -1)
+    .sort((a, b) => a - b);
 
-  const start = starts[0];
-  if (!start) return null;
+  for (const startIndex of starts) {
+    const candidate = extractBalancedJson(line, startIndex);
+    if (candidate) {
+      return candidate;
+    }
+  }
 
-  const end = line.lastIndexOf(start.close);
-  if (end === -1 || end <= start.index) return null;
-
-  return line.slice(start.index, end + 1);
+  return null;
 }
 
 function collectJsonCandidates(raw) {
