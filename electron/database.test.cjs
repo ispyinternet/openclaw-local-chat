@@ -101,3 +101,49 @@ test('searchMessages still returns matches for regular terms', (t) => {
     cleanupDb(db, tmpRoot);
   }
 });
+
+test('addMessage auto-titles untitled chats from first user message and truncates to 72 chars', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('untitled-chat', 'active', 'New chat', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    const content = `   ${'A'.repeat(90)}   `;
+    db.addMessage({ sessionId: 'untitled-chat', content, role: 'user', author: 'Operator' });
+
+    const session = db.db.prepare('SELECT name FROM sessions WHERE id = ?').get('untitled-chat');
+    assert.equal(session.name, 'A'.repeat(72));
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});
+
+test('addMessage keeps existing chat title stable after initial generation', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('stable-title-chat', 'active', '', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    db.addMessage({ sessionId: 'stable-title-chat', content: '   First user message title   ', role: 'user', author: 'Operator' });
+    db.addMessage({ sessionId: 'stable-title-chat', content: 'Second message should not retitle', role: 'user', author: 'Operator' });
+
+    const session = db.db.prepare('SELECT name FROM sessions WHERE id = ?').get('stable-title-chat');
+    assert.equal(session.name, 'First user message title');
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});

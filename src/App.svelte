@@ -207,7 +207,7 @@
       console.error('Unable to sync gateway sessions', error);
       gateway = { ...gateway, status: 'offline' };
       if (!silentError) {
-        errorMessage = error?.message || 'Unable to sync gateway sessions.';
+        errorMessage = error?.message || 'Unable to sync gateway chats.';
       }
     } finally {
       syncInFlight = false;
@@ -315,6 +315,32 @@
     restoreDraftForSession(sessionId);
   }
 
+  function generateChatTitle(input) {
+    const trimmed = typeof input === 'string' ? input.trim() : '';
+    return trimmed ? trimmed.slice(0, 72) : 'New chat';
+  }
+
+  function isUntitledChat(name) {
+    const normalized = typeof name === 'string' ? name.trim().toLowerCase() : '';
+    return !normalized || normalized === 'new chat';
+  }
+
+  function updateSessionTitle(sessionId, messageContent) {
+    const generatedTitle = generateChatTitle(messageContent);
+    sections = sections.map((section) => {
+      const hasSession = section.sessions.some((session) => session.id === sessionId);
+      if (!hasSession) return section;
+
+      const nextSessions = section.sessions.map((session) => (
+        session.id === sessionId && isUntitledChat(session.name)
+          ? { ...session, name: generatedTitle }
+          : session
+      ));
+
+      return { ...section, sessions: nextSessions };
+    });
+  }
+
   function updateSessionPreview(sessionId, preview) {
     sections = sections.map((section) => {
       const hasSession = section.sessions.some((session) => session.id === sessionId);
@@ -335,7 +361,7 @@
     if (!selectedSessionId || !content || sendingMessage) return;
 
     if (isGatewaySessionId(selectedSessionId) && gateway.status === 'offline') {
-      errorMessage = 'Gateway is offline. Reconnect or sync sessions before sending.';
+      errorMessage = 'Gateway is offline. Reconnect or sync chats before sending.';
       return;
     }
 
@@ -356,6 +382,7 @@
       messages = incoming ? [...messages, outgoing, incoming] : [...messages, outgoing];
       composerValue = '';
       persistDraftForSession(selectedSessionId, '');
+      updateSessionTitle(selectedSessionId, content);
       updateSessionPreview(selectedSessionId, incoming?.content || content);
       await tick();
       highlightMessage((incoming || outgoing)?.id);
@@ -563,7 +590,7 @@
           return {
             id: message.id,
             sessionId: message.sessionId,
-            sessionName: session?.name ?? 'Session',
+            sessionName: session?.name ?? 'Chat',
             sessionChannel: session?.channel ?? 'Channel',
             author: message.author,
             role: message.role,
@@ -660,7 +687,7 @@
   $: sendDisabled = !composerValue.trim() || sendingMessage || (selectedSessionIsGateway && gateway.status === 'offline');
   $: composerGatewayStatus = selectedSessionIsGateway
     ? (gateway.status === 'offline' ? 'Gateway offline' : `Gateway ${gateway.status}`)
-    : 'Local session';
+    : 'Local chat';
 </script>
 
 <div class="app-frame">
@@ -773,7 +800,7 @@
       {#if loading}
         <div class="loading-state">Loading conversation…</div>
       {:else if !messages.length}
-        <div class="empty-state">No messages in this session yet.</div>
+        <div class="empty-state">No messages in this chat yet.</div>
       {:else}
         <div class="message-list">
           {#each messages as message}
@@ -828,7 +855,7 @@
     </section>
 
     {#if sideRailOpen}
-      <aside class="side-rail" aria-label="Session context">
+      <aside class="side-rail" aria-label="Chat context">
         <div class="tab-strip">
           {#each rightTabs as tab}
             <button

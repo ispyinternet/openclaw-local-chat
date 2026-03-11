@@ -232,13 +232,14 @@ class ChatDatabase {
       throw new Error('sessionId and content are required');
     }
 
-    const session = this.db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId);
+    const session = this.db.prepare('SELECT id, name FROM sessions WHERE id = ?').get(sessionId);
     if (!session) {
       throw new Error('Session not found');
     }
 
     const messageKey = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const timestamp = this.#formatDisplayTimestamp(new Date());
+    const generatedTitle = this.#generateChatTitle(trimmed);
 
     const result = this.db
       .prepare(`
@@ -250,10 +251,16 @@ class ChatDatabase {
     this.db
       .prepare(`
         UPDATE sessions
-        SET preview = ?, created_at = strftime('%s','now')
+        SET preview = ?,
+            created_at = strftime('%s','now'),
+            name = CASE
+              WHEN trim(COALESCE(name, '')) = '' OR lower(trim(name)) = 'new chat'
+                THEN ?
+              ELSE name
+            END
         WHERE id = ?
       `)
-      .run(trimmed.slice(0, 160), sessionId);
+      .run(trimmed.slice(0, 160), generatedTitle, sessionId);
 
     const row = this.db
       .prepare(`
@@ -439,6 +446,15 @@ class ChatDatabase {
       hour12: false,
       timeZone: 'Europe/London'
     }).format(date);
+  }
+
+  #generateChatTitle(input) {
+    const trimmed = typeof input === 'string' ? input.trim() : '';
+    if (!trimmed) {
+      return 'New chat';
+    }
+
+    return trimmed.slice(0, 72);
   }
 
   #buildFtsQuery(input) {
