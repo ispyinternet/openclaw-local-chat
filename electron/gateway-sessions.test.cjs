@@ -144,6 +144,12 @@ test('parseGatewaySessionsOutput unwraps data: prefixed json-encoded array paylo
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput unwraps deeply json-encoded payloads', () => {
+  const sessions = [{ sessionId: 'wrapped-deep' }];
+  const encoded = JSON.stringify(JSON.stringify(JSON.stringify({ sessions })));
+  assert.deepEqual(parseGatewaySessionsOutput(encoded), sessions);
+});
+
 test('parseGatewaySessionsOutput returns empty array for invalid output', () => {
   assert.deepEqual(parseGatewaySessionsOutput('not json'), []);
 });

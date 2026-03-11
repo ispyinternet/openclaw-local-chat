@@ -164,11 +164,11 @@ function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
 function parseJsonCandidate(candidate) {
   let parsed = JSON.parse(candidate);
 
-  for (let depth = 0; depth < 2; depth += 1) {
+  for (let depth = 0; depth < 5; depth += 1) {
     if (typeof parsed !== 'string') break;
 
     const trimmed = parsed.trim();
-    if (!trimmed || !/^[\[{]/.test(trimmed)) break;
+    if (!trimmed || !/^[\[{\"]/.test(trimmed)) break;
 
     parsed = JSON.parse(trimmed);
   }
