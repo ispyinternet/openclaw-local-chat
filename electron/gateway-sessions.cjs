@@ -85,6 +85,23 @@ function collectJsonCandidates(raw) {
     }
   }
 
+  const combinedDataLines = [];
+  for (const line of lines) {
+    const dataPrefix = line.match(/^data:\s?(.*)$/i);
+    if (dataPrefix) {
+      combinedDataLines.push(dataPrefix[1]);
+      continue;
+    }
+
+    if (combinedDataLines.length > 0) {
+      candidates.push(combinedDataLines.join('\n').trim());
+      combinedDataLines.length = 0;
+    }
+  }
+  if (combinedDataLines.length > 0) {
+    candidates.push(combinedDataLines.join('\n').trim());
+  }
+
   const fencedBlocks = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
   for (let index = 0; index < fencedBlocks.length; index += 1) {
     const candidate = fencedBlocks[index]?.[1]?.trim();

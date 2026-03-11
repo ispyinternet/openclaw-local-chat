@@ -92,6 +92,16 @@ test('parseGatewaySessionsOutput extracts data: prefixed JSON array line', () =>
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput joins multiline data: payload into valid JSON', () => {
+  const sessions = [{ sessionId: 'i3b' }];
+  const stdout = [
+    'event: message',
+    'data: {"sessions":',
+    `data: ${JSON.stringify(sessions)}}`,
+  ].join('\n');
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
 test('parseGatewaySessionsOutput prefers latest fenced json payload', () => {
   const older = [{ sessionId: 'old' }];
   const latest = [{ sessionId: 'new' }];
