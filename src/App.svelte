@@ -569,7 +569,13 @@
     return seedData.sections.map((section) => ({
       id: section.id,
       title: section.title,
-      sessions: seedData.sessions.filter((session) => session.groupId === section.id)
+      sessions: seedData.sessions
+        .filter((session) => session.groupId === section.id)
+        .map((session) => ({
+          agentId: 'main',
+          agentDisplayName: 'Main',
+          ...session
+        }))
     }));
   }
 

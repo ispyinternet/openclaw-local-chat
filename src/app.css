@@ -348,6 +348,23 @@ button.icon {
   font-size: 1.4rem;
 }
 
+.agent-switcher {
+  margin-top: 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.8rem;
+  color: #a8b5db;
+}
+
+.agent-switcher select {
+  background: rgba(15, 18, 32, 0.9);
+  color: #dce6ff;
+  border: 1px solid rgba(157, 186, 252, 0.35);
+  border-radius: 8px;
+  padding: 0.2rem 0.45rem;
+}
+
 .timeline-actions {
   display: flex;
   gap: 0.5rem;
