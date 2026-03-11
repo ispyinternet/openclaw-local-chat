@@ -24,12 +24,18 @@ function collectJsonCandidates(raw) {
   return candidates;
 }
 
-function normalizeGatewaySessionsPayload(raw) {
-  if (!raw) return [];
+function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
+  if (!raw || seen.has(raw)) return [];
 
   if (Array.isArray(raw)) {
     return raw;
   }
+
+  if (typeof raw !== 'object') {
+    return [];
+  }
+
+  seen.add(raw);
 
   if (Array.isArray(raw.sessions)) {
     return raw.sessions;
@@ -39,12 +45,28 @@ function normalizeGatewaySessionsPayload(raw) {
     return raw.data;
   }
 
+  if (Array.isArray(raw.items)) {
+    return raw.items;
+  }
+
   if (raw.sessions && Array.isArray(raw.sessions.items)) {
     return raw.sessions.items;
   }
 
-  if (raw.result) {
-    return normalizeGatewaySessionsPayload(raw.result);
+  const nestedCandidates = [
+    raw.result,
+    raw.payload,
+    raw.response,
+    raw.output,
+    raw.data,
+    raw.sessions,
+  ];
+
+  for (const candidate of nestedCandidates) {
+    const sessions = normalizeGatewaySessionsPayload(candidate, seen);
+    if (sessions.length > 0) {
+      return sessions;
+    }
   }
 
   return [];

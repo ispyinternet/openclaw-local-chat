@@ -27,6 +27,17 @@ test('normalizeGatewaySessionsPayload handles nested result payload', () => {
   assert.deepEqual(normalizeGatewaySessionsPayload({ result: { sessions } }), sessions);
 });
 
+test('normalizeGatewaySessionsPayload handles nested payload/data/items wrappers', () => {
+  const sessions = [{ sessionId: 'e2' }];
+  assert.deepEqual(normalizeGatewaySessionsPayload({ payload: { data: { items: sessions } } }), sessions);
+});
+
+test('normalizeGatewaySessionsPayload safely handles cyclic objects', () => {
+  const payload = {};
+  payload.self = payload;
+  assert.deepEqual(normalizeGatewaySessionsPayload(payload), []);
+});
+
 test('normalizeGatewaySessionsPayload returns empty array for unknown payloads', () => {
   assert.deepEqual(normalizeGatewaySessionsPayload(null), []);
   assert.deepEqual(normalizeGatewaySessionsPayload({}), []);
