@@ -99,18 +99,36 @@ function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
   return [];
 }
 
+function parseJsonCandidate(candidate) {
+  let parsed = JSON.parse(candidate);
+
+  for (let depth = 0; depth < 2; depth += 1) {
+    if (typeof parsed !== 'string') break;
+
+    const trimmed = parsed.trim();
+    if (!trimmed || !/^[\[{]/.test(trimmed)) break;
+
+    parsed = JSON.parse(trimmed);
+  }
+
+  return normalizeGatewaySessionsPayload(parsed);
+}
+
 function parseGatewaySessionsOutput(stdout) {
   const raw = String(stdout || '').trim();
   if (!raw) return [];
 
   try {
-    return normalizeGatewaySessionsPayload(JSON.parse(raw));
+    return parseJsonCandidate(raw);
   } catch {
     const candidates = collectJsonCandidates(raw);
 
     for (const candidate of candidates) {
       try {
-        return normalizeGatewaySessionsPayload(JSON.parse(candidate));
+        const sessions = parseJsonCandidate(candidate);
+        if (sessions.length > 0) {
+          return sessions;
+        }
       } catch {
         // keep scanning
       }
