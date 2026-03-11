@@ -4,7 +4,7 @@ const { execFile } = require('node:child_process');
 const { promisify } = require('node:util');
 const { createDatabase } = require('./database.cjs');
 const { extractAgentText } = require('./agent-response.cjs');
-const { normalizeGatewaySessionsPayload } = require('./gateway-sessions.cjs');
+const { parseGatewaySessionsOutput } = require('./gateway-sessions.cjs');
 const { summarizeExecError } = require('./cli-error.cjs');
 
 const execFileAsync = promisify(execFile);
@@ -91,8 +91,7 @@ ipcMain.handle('data:reset', () => {
 ipcMain.handle('data:sync-gateway-sessions', async () => {
   try {
     const { stdout } = await execFileAsync('openclaw', ['sessions', '--json'], { maxBuffer: 2 * 1024 * 1024 });
-    const parsed = JSON.parse(stdout || '{}');
-    const sessions = normalizeGatewaySessionsPayload(parsed);
+    const sessions = parseGatewaySessionsOutput(stdout);
     return database.upsertGatewaySessions(sessions);
   } catch (error) {
     const reason = summarizeExecError(error, 'Unable to sync sessions');
