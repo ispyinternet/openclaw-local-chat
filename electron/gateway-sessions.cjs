@@ -67,11 +67,11 @@ function collectJsonCandidates(raw) {
   const text = String(raw);
   const lines = text
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line) => line.trim());
+  const nonEmptyLines = lines.filter(Boolean);
 
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
+  for (let index = nonEmptyLines.length - 1; index >= 0; index -= 1) {
+    const line = nonEmptyLines[index];
     candidates.push(line);
 
     const dataPrefix = line.match(/^data:\s*(.+)$/i);

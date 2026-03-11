@@ -102,6 +102,21 @@ test('parseGatewaySessionsOutput joins multiline data: payload into valid JSON',
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput keeps multiline data events separated by blank lines', () => {
+  const older = [{ sessionId: 'i3c-old' }];
+  const latest = [{ sessionId: 'i3c-new' }];
+  const stdout = [
+    'event: message',
+    'data: {"sessions":',
+    `data: ${JSON.stringify(older)}}`,
+    '',
+    'event: message',
+    'data: {"sessions":',
+    `data: ${JSON.stringify(latest)}}`,
+  ].join('\n');
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), latest);
+});
+
 test('parseGatewaySessionsOutput prefers latest fenced json payload', () => {
   const older = [{ sessionId: 'old' }];
   const latest = [{ sessionId: 'new' }];
