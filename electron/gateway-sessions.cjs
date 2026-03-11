@@ -1,3 +1,22 @@
+function extractInlineJson(line) {
+  const firstBrace = line.indexOf('{');
+  const firstBracket = line.indexOf('[');
+
+  const starts = [
+    { index: firstBrace, open: '{', close: '}' },
+    { index: firstBracket, open: '[', close: ']' },
+  ].filter((entry) => entry.index !== -1)
+    .sort((a, b) => a.index - b.index);
+
+  const start = starts[0];
+  if (!start) return null;
+
+  const end = line.lastIndexOf(start.close);
+  if (end === -1 || end <= start.index) return null;
+
+  return line.slice(start.index, end + 1);
+}
+
 function collectJsonCandidates(raw) {
   const candidates = [];
   const text = String(raw);
@@ -15,10 +34,9 @@ function collectJsonCandidates(raw) {
       candidates.push(dataPrefix[1]);
     }
 
-    const firstBrace = line.indexOf('{');
-    const lastBrace = line.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-      candidates.push(line.slice(firstBrace, lastBrace + 1));
+    const inlineJson = extractInlineJson(line);
+    if (inlineJson) {
+      candidates.push(inlineJson);
     }
   }
 

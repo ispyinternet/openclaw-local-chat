@@ -68,6 +68,18 @@ test('parseGatewaySessionsOutput extracts data: prefixed json line', () => {
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput extracts inline JSON array from log output', () => {
+  const sessions = [{ sessionId: 'i2' }];
+  const stdout = `trace: synced sessions ${JSON.stringify(sessions)}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput extracts data: prefixed JSON array line', () => {
+  const sessions = [{ sessionId: 'i3' }];
+  const stdout = ['event: snapshot', `data: ${JSON.stringify(sessions)}`].join('\n');
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
 test('parseGatewaySessionsOutput prefers latest fenced json payload', () => {
   const older = [{ sessionId: 'old' }];
   const latest = [{ sessionId: 'new' }];
