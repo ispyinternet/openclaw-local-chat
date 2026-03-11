@@ -62,6 +62,27 @@ test('parseGatewaySessionsOutput extracts fenced json payload', () => {
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput extracts data: prefixed json line', () => {
+  const sessions = [{ sessionId: 'i' }];
+  const stdout = ['event: message', `data: ${JSON.stringify({ sessions })}`].join('\n');
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput prefers latest fenced json payload', () => {
+  const older = [{ sessionId: 'old' }];
+  const latest = [{ sessionId: 'new' }];
+  const stdout = [
+    '```json',
+    JSON.stringify({ sessions: older }),
+    '```',
+    'logs between blocks',
+    '```json',
+    JSON.stringify({ sessions: latest }),
+    '```',
+  ].join('\n');
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), latest);
+});
+
 test('parseGatewaySessionsOutput returns empty array for invalid output', () => {
   assert.deepEqual(parseGatewaySessionsOutput('not json'), []);
 });

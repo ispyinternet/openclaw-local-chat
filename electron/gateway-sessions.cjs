@@ -1,6 +1,7 @@
 function collectJsonCandidates(raw) {
   const candidates = [];
-  const lines = String(raw)
+  const text = String(raw);
+  const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
@@ -9,6 +10,11 @@ function collectJsonCandidates(raw) {
     const line = lines[index];
     candidates.push(line);
 
+    const dataPrefix = line.match(/^data:\s*(.+)$/i);
+    if (dataPrefix?.[1]) {
+      candidates.push(dataPrefix[1]);
+    }
+
     const firstBrace = line.indexOf('{');
     const lastBrace = line.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -16,9 +22,12 @@ function collectJsonCandidates(raw) {
     }
   }
 
-  const fencedJson = String(raw).match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fencedJson?.[1]) {
-    candidates.unshift(fencedJson[1].trim());
+  const fencedBlocks = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
+  for (let index = 0; index < fencedBlocks.length; index += 1) {
+    const candidate = fencedBlocks[index]?.[1]?.trim();
+    if (candidate) {
+      candidates.unshift(candidate);
+    }
   }
 
   return candidates;
