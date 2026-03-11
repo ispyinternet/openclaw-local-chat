@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('chatDesktop', {
     setComposerDrafts: (drafts) => ipcRenderer.invoke('data:set-composer-drafts', drafts),
     reset: () => ipcRenderer.invoke('data:reset'),
     syncGatewaySessions: () => ipcRenderer.invoke('data:sync-gateway-sessions'),
+    setSessionAgent: (payload) => ipcRenderer.invoke('data:set-session-agent', payload),
     sendMessage: (payload) => ipcRenderer.invoke('data:send-message', payload)
   }
 });

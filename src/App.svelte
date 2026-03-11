@@ -57,6 +57,12 @@
     degraded: { label: 'Degraded', tone: 'warning' }
   };
 
+  const agentOptions = [
+    { id: 'main', displayName: 'Main' },
+    { id: 'coder', displayName: 'Coder' },
+    { id: 'planner', displayName: 'Planner' }
+  ];
+
   let sections = buildSectionsFromSeed();
   let selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
   let messages = buildMessagesFromSeed(selectedSessionId);
@@ -75,7 +81,10 @@
   let highlightTimeout;
   let draftPersistTimer;
   let showSettings = false;
-  let sideRailOpen = true;
+  let sideRailOpen = false;
+  let leftRailOpen = true;
+  let leftRailNav = 'chats';
+  let chatMenuOpenFor = null;
   let settingsSaving = false;
   let resettingData = false;
   let sendingMessage = false;
@@ -297,6 +306,8 @@
       return;
     }
 
+    chatMenuOpenFor = null;
+
     persistDraftForSession(selectedSessionId, composerValue);
     selectedSessionId = sessionId;
     selectedSession = findSession(sessionId);
@@ -315,14 +326,47 @@
     restoreDraftForSession(sessionId);
   }
 
-  function updateSessionPreview(sessionId, preview) {
+  function createNewChat() {
+    const sessionId = `local-${Date.now()}`;
+    const freshSession = {
+      id: sessionId,
+      name: 'New chat',
+      channel: 'Local',
+      preview: 'Start the conversation…',
+      unread: 0,
+      chip: 'local',
+      status: 'idle'
+    };
+
+    sections = sections.map((section, index) => {
+      if (index !== 0) return section;
+      return { ...section, sessions: [freshSession, ...section.sessions] };
+    });
+
+    void selectSession(sessionId);
+  }
+
+  function toggleChatMenu(event, sessionId) {
+    event.stopPropagation();
+    chatMenuOpenFor = chatMenuOpenFor === sessionId ? null : sessionId;
+  }
+
+  function handleChatMenuAction(event, sessionId) {
+    event.stopPropagation();
+    chatMenuOpenFor = null;
+    if (sessionId) {
+      errorMessage = `Chat actions are coming soon (${sessionId.slice(0, 8)}…).`;
+    }
+  }
+
+  function applySessionPatch(sessionId, patch = {}) {
     sections = sections.map((section) => {
       const hasSession = section.sessions.some((session) => session.id === sessionId);
       if (!hasSession) return section;
 
       const nextSessions = section.sessions.map((session) => (
         session.id === sessionId
-          ? { ...session, preview: preview.slice(0, 160) }
+          ? { ...session, ...patch }
           : session
       ));
 
@@ -356,7 +400,11 @@
       messages = incoming ? [...messages, outgoing, incoming] : [...messages, outgoing];
       composerValue = '';
       persistDraftForSession(selectedSessionId, '');
-      updateSessionPreview(selectedSessionId, incoming?.content || content);
+      if (delivery?.session) {
+        applySessionPatch(selectedSessionId, delivery.session);
+      } else {
+        applySessionPatch(selectedSessionId, { preview: (incoming?.content || content).slice(0, 160) });
+      }
       await tick();
       highlightMessage((incoming || outgoing)?.id);
     } catch (error) {
@@ -364,6 +412,33 @@
       errorMessage = 'Unable to send message right now.';
     } finally {
       sendingMessage = false;
+    }
+  }
+
+  async function handleAgentChange(event) {
+    const nextAgentId = event.currentTarget.value;
+    const nextAgent = agentOptions.find((item) => item.id === nextAgentId) ?? agentOptions[0];
+    if (!selectedSessionId || !nextAgent || selectedSession?.agentId === nextAgent.id) return;
+
+    try {
+      const client = dataClient ?? fallbackAdapter;
+      const result = await client.setSessionAgent({
+        sessionId: selectedSessionId,
+        agentId: nextAgent.id,
+        agentDisplayName: nextAgent.displayName
+      });
+
+      if (result?.session) {
+        applySessionPatch(selectedSessionId, result.session);
+      }
+      if (result?.systemMessage) {
+        messages = [...messages, result.systemMessage];
+        await tick();
+        highlightMessage(result.systemMessage.id);
+      }
+    } catch (error) {
+      console.error('Unable to switch agent', error);
+      errorMessage = 'Failed to switch agent for this chat.';
     }
   }
 
@@ -468,6 +543,12 @@
         return;
       }
 
+      if (event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        leftRailOpen = !leftRailOpen;
+        return;
+      }
+
       if (event.shiftKey && event.key === '[') {
         event.preventDefault();
         selectAdjacentSession(-1);
@@ -545,12 +626,46 @@
         timeZone: 'Europe/London'
       }).format(now);
 
+      const session = findSession(payload.sessionId);
+      const isFirstUserMessage = !messages.some((message) => message.role === 'user');
+
       return {
         id: `local-${now.getTime()}`,
         role: payload.role ?? 'user',
         author: payload.author ?? 'Operator',
         timestamp,
-        content: payload.content
+        content: payload.content,
+        session: {
+          ...session,
+          preview: payload.content.slice(0, 160),
+          name: isFirstUserMessage ? deriveChatTitle(payload.content) : session?.name
+        }
+      };
+    },
+    async setSessionAgent(payload) {
+      const now = new Date();
+      const session = findSession(payload.sessionId);
+      const timestamp = new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Europe/London'
+      }).format(now);
+
+      return {
+        session: {
+          ...session,
+          agentId: payload.agentId,
+          agentDisplayName: payload.agentDisplayName
+        },
+        systemMessage: {
+          id: `local-switch-${now.getTime()}`,
+          role: 'system',
+          author: 'System',
+          timestamp,
+          content: `Switched to ${payload.agentDisplayName}`,
+          meta: { pill: 'switch', detail: payload.agentDisplayName }
+        }
       };
     },
     async searchMessages(query) {
@@ -573,6 +688,15 @@
         });
     }
   };
+
+  function deriveChatTitle(text) {
+    const cleaned = (text || '')
+      .replace(/[`*_#>\[\]()]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!cleaned) return 'New chat';
+    return cleaned.slice(0, 72);
+  }
 
   function escapeHtml(text) {
     return text.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char] || char));
@@ -664,54 +788,79 @@
 </script>
 
 <div class="app-frame">
-  <header class="top-bar">
-    <div class="gateway">
-      <div>
-        <p class="eyebrow">Gateway</p>
-        <strong>{gateway.name}</strong>
-      </div>
-      <div class="gateway-meta">
-        <span class={`pill ${statusPills[gateway.status].tone}`}>{statusPills[gateway.status].label}</span>
-        <span class="meta">{gateway.endpoint}</span>
-        <span class="meta">Last heartbeat · {gateway.heartbeat}</span>
-      </div>
+  <header class="top-bar compact">
+    <div class="gateway-meta">
+      <span class={`pill ${statusPills[gateway.status].tone}`}>{statusPills[gateway.status].label}</span>
+      <span class="meta">{gateway.name}</span>
+      <span class="meta">{gateway.heartbeat}</span>
     </div>
     <div class="top-actions">
-      <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
-      <button class="ghost" on:click={openLogsFolder}>Open logs</button>
-      <button class="primary" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
-        {syncInFlight ? 'Syncing…' : 'Sync chats'}
+      <button class="ghost" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
+        {syncInFlight ? 'Syncing…' : 'Sync'}
       </button>
+      <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
     </div>
   </header>
 
-  <div class={`shell-grid ${sideRailOpen ? '' : 'rail-collapsed'}`}>
+  <div class={`shell-grid ${sideRailOpen ? '' : 'rail-collapsed'} ${leftRailOpen ? '' : 'left-collapsed'}`}>
     <aside class="session-rail" aria-label="Chat list">
-      {#each sections as section}
-        <div class="session-section">
-          <p class="section-label">{section.title}</p>
-          {#each section.sessions as session}
-            <button
-              class={`session-tile ${session.id === selectedSessionId ? 'active' : ''}`}
-              on:click={() => selectSession(session.id)}
-            >
-              <div class="tile-main">
-                <div>
-                  <div class="name-row">
-                    <span class="name">{session.name}</span>
-                    {#if session.unread}
-                      <span class="badge">{session.unread}</span>
-                    {/if}
+      <div class="rail-header">
+        <strong>OpenClaw Chat</strong>
+        <button class="ghost icon" on:click={() => (leftRailOpen = false)} title="Collapse sidebar">⟨</button>
+      </div>
+      <button class="primary new-chat" on:click={createNewChat}>+ New chat</button>
+      <nav class="rail-nav" aria-label="Primary navigation">
+        <button class={leftRailNav === 'chats' ? 'active' : ''} on:click={() => (leftRailNav = 'chats')}>Chats</button>
+        <button class={leftRailNav === 'agents' ? 'active' : ''} on:click={() => (leftRailNav = 'agents')}>Agents</button>
+      </nav>
+
+      {#if leftRailNav === 'chats'}
+        {#each sections as section}
+          <div class="session-section">
+            <p class="section-label">{section.title}</p>
+            {#each section.sessions as session}
+              <div
+                class={`session-tile ${session.id === selectedSessionId ? 'active' : ''}`}
+                role="button"
+                tabindex="0"
+                on:click={() => selectSession(session.id)}
+                on:keydown={(event) => event.key === 'Enter' && selectSession(session.id)}
+              >
+                <div class="tile-main">
+                  <div>
+                    <div class="name-row">
+                      <span class="name">{session.name}</span>
+                      <span class="agent-badge" title={`Active agent: ${session.agentDisplayName ?? 'Main'}`}>
+                        {session.agentDisplayName ?? 'Main'}
+                      </span>
+                      {#if session.unread}
+                        <span class="badge">{session.unread}</span>
+                      {/if}
+                    </div>
+                    <p class="preview">{session.channel} · {session.preview}</p>
                   </div>
-                  <p class="preview">{session.preview}</p>
                 </div>
-                <span class={`chip ${session.chip}`}>{session.channel}</span>
+                <div class="tile-actions">
+                  <button class="ghost icon" on:click={(event) => toggleChatMenu(event, session.id)} aria-label="Chat actions">⋯</button>
+                  {#if chatMenuOpenFor === session.id}
+                    <div class="chat-menu">
+                      <button on:click={(event) => handleChatMenuAction(event, session.id)}>Copy chat ID</button>
+                      <button on:click={(event) => handleChatMenuAction(event, session.id)}>Mute chat</button>
+                    </div>
+                  {/if}
+                </div>
               </div>
-              <span class={`status-dot ${session.status}`}></span>
-            </button>
-          {/each}
-        </div>
-      {/each}
+            {/each}
+          </div>
+        {/each}
+      {:else}
+        <div class="agents-placeholder meta">Agent management stays available here.</div>
+      {/if}
+
+      <footer class="rail-footer">
+        <button class="ghost" on:click={openLogsFolder}>Open logs</button>
+        <button class="ghost" on:click={() => (showSettings = true)}>Profile & settings</button>
+      </footer>
     </aside>
 
     <section class="timeline-area" aria-label="Conversation timeline">
@@ -719,8 +868,19 @@
         <div>
           <p class="eyebrow">Current chat</p>
           <h2>{selectedSession?.name ?? 'Chat'}</h2>
+          <label class="agent-switcher">
+            <span>Agent</span>
+            <select value={selectedSession?.agentId ?? 'main'} on:change={handleAgentChange}>
+              {#each agentOptions as agent}
+                <option value={agent.id}>{agent.displayName}</option>
+              {/each}
+            </select>
+          </label>
         </div>
         <div class="timeline-actions">
+          {#if !leftRailOpen}
+            <button class="ghost" on:click={() => (leftRailOpen = true)}>Show chats</button>
+          {/if}
           <input
             class="search-input"
             type="search"
@@ -730,9 +890,9 @@
             bind:this={searchInputEl}
             on:input={handleSearchInput}
           />
-          <button class="ghost" on:click={focusSearchInput}>Jump ⌘K</button>
+          <button class="ghost" on:click={focusSearchInput}>⌘K</button>
           <button class="ghost" on:click={() => (sideRailOpen = !sideRailOpen)}>
-            {sideRailOpen ? 'Hide panel' : 'Show panel'}
+            {sideRailOpen ? 'Hide details' : 'Show details'}
           </button>
         </div>
       </header>
@@ -773,7 +933,7 @@
       {#if loading}
         <div class="loading-state">Loading conversation…</div>
       {:else if !messages.length}
-        <div class="empty-state">No messages in this session yet.</div>
+        <div class="empty-state">No messages in this chat yet.</div>
       {:else}
         <div class="message-list">
           {#each messages as message}
@@ -822,6 +982,7 @@
         </div>
         <div class="composer-meta">
           <span class="meta">Send as · Operator</span>
+          <span class="meta">Agent · {selectedSession?.agentDisplayName ?? 'Main'}</span>
           <span class="meta">{composerGatewayStatus}</span>
         </div>
       </footer>

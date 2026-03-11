@@ -88,6 +88,10 @@ ipcMain.handle('data:reset', () => {
   return database.resetData();
 });
 
+ipcMain.handle('data:set-session-agent', (_event, payload) => {
+  return database.setSessionAgent(payload?.sessionId, payload || {});
+});
+
 ipcMain.handle('data:sync-gateway-sessions', async () => {
   try {
     const { stdout } = await execFileAsync('openclaw', ['sessions', '--json'], { maxBuffer: 2 * 1024 * 1024 });
@@ -101,13 +105,14 @@ ipcMain.handle('data:sync-gateway-sessions', async () => {
 
 ipcMain.handle('data:send-message', async (_event, payload) => {
   const userMessage = database.addMessage(payload);
+  const session = database.getSessionById(payload?.sessionId);
 
   const looksLikeGatewaySession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload?.sessionId || '');
 
   try {
     const args = looksLikeGatewaySession
       ? ['agent', '--session-id', payload.sessionId, '--message', payload.content, '--json']
-      : ['agent', '--agent', 'main', '--message', payload.content, '--json'];
+      : ['agent', '--agent', session?.agentId || 'main', '--message', payload.content, '--json'];
 
     const { stdout } = await execFileAsync(
       'openclaw',
@@ -123,7 +128,7 @@ ipcMain.handle('data:send-message', async (_event, payload) => {
       author: 'OpenClaw'
     });
 
-    return { userMessage, assistantMessage };
+    return { userMessage, assistantMessage, session: database.getSessionById(payload?.sessionId) };
   } catch (error) {
     const assistantMessage = database.addMessage({
       sessionId: payload.sessionId,
@@ -132,7 +137,7 @@ ipcMain.handle('data:send-message', async (_event, payload) => {
       author: 'System'
     });
 
-    return { userMessage, assistantMessage };
+    return { userMessage, assistantMessage, session: database.getSessionById(payload?.sessionId) };
   }
 });
 

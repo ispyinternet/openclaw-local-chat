@@ -37,6 +37,8 @@ class ChatDatabase {
         unread INTEGER NOT NULL DEFAULT 0,
         chip TEXT NOT NULL,
         status TEXT NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT 'main',
+        agent_display_name TEXT NOT NULL DEFAULT 'Main',
         created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
         FOREIGN KEY(group_id) REFERENCES sections(id) ON DELETE CASCADE
       );
@@ -89,6 +91,14 @@ class ChatDatabase {
         WHERE rowid = new.id;
       END;
     `);
+
+    try {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'main'");
+    } catch {}
+
+    try {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN agent_display_name TEXT NOT NULL DEFAULT 'Main'");
+    } catch {}
   }
 
   #seedIfNeeded() {
@@ -102,8 +112,8 @@ class ChatDatabase {
       'INSERT INTO sections (id, title, position) VALUES (@id, @title, @position)'
     );
     const insertSession = this.db.prepare(`
-      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
-      VALUES (@id, @groupId, @name, @channel, @preview, @unread, @chip, @status)
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status, agent_id, agent_display_name)
+      VALUES (@id, @groupId, @name, @channel, @preview, @unread, @chip, @status, @agentId, @agentDisplayName)
     `);
     const insertMessage = this.db.prepare(`
       INSERT INTO messages (session_id, message_key, role, author, content, display_timestamp, meta_pill, meta_detail, reactions)
@@ -112,7 +122,11 @@ class ChatDatabase {
 
     const transaction = this.db.transaction(() => {
       seed.sections.forEach((section) => insertSection.run(section));
-      seed.sessions.forEach((session) => insertSession.run(session));
+      seed.sessions.forEach((session) => insertSession.run({
+        agentId: 'main',
+        agentDisplayName: 'Main',
+        ...session
+      }));
       seed.messages.forEach((message) => insertMessage.run({
         meta_pill: null,
         meta_detail: null,
@@ -130,7 +144,8 @@ class ChatDatabase {
       .all();
     const sessions = this.db
       .prepare(`
-        SELECT id, group_id as groupId, name, channel, preview, unread, chip, status
+        SELECT id, group_id as groupId, name, channel, preview, unread, chip, status,
+               agent_id as agentId, agent_display_name as agentDisplayName
         FROM sessions
         ORDER BY created_at DESC
       `)
@@ -226,7 +241,7 @@ class ChatDatabase {
       }));
   }
 
-  addMessage({ sessionId, content, author = 'Operator', role = 'user' }) {
+  addMessage({ sessionId, content, author = 'Operator', role = 'user', metaPill = null, metaDetail = null }) {
     const trimmed = typeof content === 'string' ? content.trim() : '';
     if (!sessionId || !trimmed) {
       throw new Error('sessionId and content are required');
@@ -237,23 +252,31 @@ class ChatDatabase {
       throw new Error('Session not found');
     }
 
+    const firstUserMessage = role === 'user'
+      ? this.db.prepare("SELECT COUNT(*) as count FROM messages WHERE session_id = ? AND role = 'user'").get(sessionId).count === 0
+      : false;
+
     const messageKey = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const timestamp = this.#formatDisplayTimestamp(new Date());
 
     const result = this.db
       .prepare(`
-        INSERT INTO messages (session_id, message_key, role, author, content, display_timestamp)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO messages (session_id, message_key, role, author, content, display_timestamp, meta_pill, meta_detail)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
       `)
-      .run(sessionId, messageKey, role, author, trimmed, timestamp);
+      .run(sessionId, messageKey, role, author, trimmed, timestamp, metaPill, metaDetail);
+
+    const nextTitle = firstUserMessage ? this.#deriveChatTitle(trimmed) : null;
 
     this.db
       .prepare(`
         UPDATE sessions
-        SET preview = ?, created_at = strftime('%s','now')
+        SET preview = ?,
+            name = COALESCE(?, name),
+            created_at = strftime('%s','now')
         WHERE id = ?
       `)
-      .run(trimmed.slice(0, 160), sessionId);
+      .run(trimmed.slice(0, 160), nextTitle, sessionId);
 
     const row = this.db
       .prepare(`
@@ -274,6 +297,57 @@ class ChatDatabase {
       ...row,
       reactions: row.reactions ? row.reactions.split(',').map((item) => item.trim()).filter(Boolean) : undefined,
       meta: row.metaPill ? { pill: row.metaPill, detail: row.metaDetail || '' } : undefined
+    };
+  }
+
+  getSessionById(sessionId) {
+    if (!sessionId) return null;
+
+    return this.db.prepare(`
+      SELECT id,
+             group_id as groupId,
+             name,
+             channel,
+             preview,
+             unread,
+             chip,
+             status,
+             agent_id as agentId,
+             agent_display_name as agentDisplayName
+      FROM sessions
+      WHERE id = ?
+    `).get(sessionId) || null;
+  }
+
+  setSessionAgent(sessionId, { agentId, agentDisplayName }) {
+    if (!sessionId || !agentId || !agentDisplayName) {
+      throw new Error('sessionId, agentId and agentDisplayName are required');
+    }
+
+    const result = this.db.prepare(`
+      UPDATE sessions
+      SET agent_id = ?,
+          agent_display_name = ?,
+          created_at = strftime('%s','now')
+      WHERE id = ?
+    `).run(agentId, agentDisplayName, sessionId);
+
+    if (!result.changes) {
+      throw new Error('Session not found');
+    }
+
+    const systemMessage = this.addMessage({
+      sessionId,
+      role: 'system',
+      author: 'System',
+      content: `Switched to ${agentDisplayName}`,
+      metaPill: 'switch',
+      metaDetail: agentDisplayName
+    });
+
+    return {
+      session: this.getSessionById(sessionId),
+      systemMessage
     };
   }
 
@@ -430,6 +504,21 @@ class ChatDatabase {
     });
 
     tx();
+  }
+
+  #deriveChatTitle(content) {
+    const cleaned = String(content || '')
+      .replace(/`{1,3}[^`]*`{1,3}/g, ' ')
+      .replace(/\*\*|__|~~|`|#+|>+/g, ' ')
+      .replace(/\[[^\]]*\]\([^\)]*\)/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    if (!cleaned) {
+      return 'New chat';
+    }
+
+    return cleaned.slice(0, 72);
   }
 
   #formatDisplayTimestamp(date) {
