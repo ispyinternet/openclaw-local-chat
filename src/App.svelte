@@ -12,7 +12,7 @@
 
   const contextItems = [
     { label: 'Channel', value: 'Slack DM' },
-    { label: 'Session ID', value: 'sess_23ff901' },
+    { label: 'Chat ID', value: 'sess_23ff901' },
     { label: 'Routing', value: 'Primary agent · tools:on' },
     { label: 'Safety', value: 'Live · elevated' },
     { label: 'Last activity', value: '13:05 GMT' }
@@ -305,7 +305,7 @@
       messages = await client.getMessages(sessionId);
     } catch (error) {
       console.error('Failed to load messages', error);
-      errorMessage = 'Unable to load messages for that session. Showing offline data if available.';
+      errorMessage = 'Unable to load messages for that chat. Showing offline data if available.';
       messages = buildMessagesFromSeed(sessionId);
     }
 
@@ -680,13 +680,13 @@
       <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
       <button class="ghost" on:click={openLogsFolder}>Open logs</button>
       <button class="primary" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
-        {syncInFlight ? 'Syncing…' : 'Sync sessions'}
+        {syncInFlight ? 'Syncing…' : 'Sync chats'}
       </button>
     </div>
   </header>
 
   <div class={`shell-grid ${sideRailOpen ? '' : 'rail-collapsed'}`}>
-    <aside class="session-rail" aria-label="Session list">
+    <aside class="session-rail" aria-label="Chat list">
       {#each sections as section}
         <div class="session-section">
           <p class="section-label">{section.title}</p>
@@ -717,8 +717,8 @@
     <section class="timeline-area" aria-label="Conversation timeline">
       <header class="timeline-header">
         <div>
-          <p class="eyebrow">Connected as</p>
-          <h2>{selectedSession?.name ?? 'Session'}</h2>
+          <p class="eyebrow">Current chat</p>
+          <h2>{selectedSession?.name ?? 'Chat'}</h2>
         </div>
         <div class="timeline-actions">
           <input
