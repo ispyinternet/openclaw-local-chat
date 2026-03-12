@@ -32,6 +32,17 @@ test('normalizeGatewaySessionsPayload handles nested payload/data/items wrappers
   assert.deepEqual(normalizeGatewaySessionsPayload({ payload: { data: { items: sessions } } }), sessions);
 });
 
+test('normalizeGatewaySessionsPayload handles json-string data wrappers', () => {
+  const sessions = [{ sessionId: 'e3' }];
+  assert.deepEqual(normalizeGatewaySessionsPayload({ data: JSON.stringify({ sessions }) }), sessions);
+});
+
+test('normalizeGatewaySessionsPayload handles deeply encoded nested wrappers', () => {
+  const sessions = [{ sessionId: 'e4' }];
+  const encoded = JSON.stringify(JSON.stringify({ sessions }));
+  assert.deepEqual(normalizeGatewaySessionsPayload({ result: encoded }), sessions);
+});
+
 test('normalizeGatewaySessionsPayload safely handles cyclic objects', () => {
   const payload = {};
   payload.self = payload;

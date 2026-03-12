@@ -125,6 +125,19 @@ function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
     return raw;
   }
 
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (/^[\[{\"]/.test(trimmed)) {
+      try {
+        return normalizeGatewaySessionsPayload(JSON.parse(trimmed), seen);
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  }
+
   if (typeof raw !== 'object') {
     return [];
   }
