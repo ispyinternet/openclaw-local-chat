@@ -10,13 +10,9 @@
     mode: 'Live'
   };
 
-  const contextItems = [
-    { label: 'Channel', value: 'Slack DM' },
-    { label: 'Chat ID', value: 'sess_23ff901' },
-    { label: 'Routing', value: 'Primary agent · tools:on' },
-    { label: 'Safety', value: 'Live · elevated' },
-    { label: 'Last activity', value: '13:05 GMT' }
-  ];
+  let routingAgentId = 'main';
+  let routingAgentDisplayName = 'Primary';
+  let routingSaving = false;
 
   const runs = [
     {
@@ -305,6 +301,7 @@
     persistDraftForSession(selectedSessionId, composerValue);
     selectedSessionId = sessionId;
     selectedSession = findSession(sessionId);
+    syncRoutingDraftFromSession(selectedSession);
     try {
       const client = dataClient ?? fallbackAdapter;
       messages = await client.getMessages(sessionId);
@@ -320,6 +317,43 @@
     searchResults = [];
     highlightedMessageId = null;
     restoreDraftForSession(sessionId);
+  }
+
+  function syncRoutingDraftFromSession(session) {
+    routingAgentId = session?.agentId || 'main';
+    routingAgentDisplayName = session?.agentDisplayName || 'Primary';
+  }
+
+  async function saveSessionRouting() {
+    if (!selectedSessionId || !dataClient?.setSessionAgent || routingSaving) return;
+
+    routingSaving = true;
+    errorMessage = '';
+    try {
+      const updated = await dataClient.setSessionAgent({
+        sessionId: selectedSessionId,
+        agentId: routingAgentId,
+        agentDisplayName: routingAgentDisplayName
+      });
+
+      sections = sections.map((section) => ({
+        ...section,
+        sessions: section.sessions.map((session) => (
+          session.id === selectedSessionId
+            ? {
+              ...session,
+              agentId: updated?.agentId || routingAgentId || 'main',
+              agentDisplayName: updated?.agentDisplayName || routingAgentDisplayName || 'Primary'
+            }
+            : session
+        ))
+      }));
+    } catch (error) {
+      console.error('Unable to save chat routing', error);
+      errorMessage = 'Failed to save chat routing.';
+    } finally {
+      routingSaving = false;
+    }
   }
 
   function generateChatTitle(input) {
@@ -725,11 +759,22 @@
   }
 
   $: selectedSession = findSession(selectedSessionId);
+  $: syncRoutingDraftFromSession(selectedSession);
   $: selectedSessionIsGateway = isGatewaySessionId(selectedSessionId);
   $: sendDisabled = !composerValue.trim() || sendingMessage || (selectedSessionIsGateway && gateway.status === 'offline');
   $: composerGatewayStatus = selectedSessionIsGateway
     ? (gateway.status === 'offline' ? 'Gateway offline' : `Gateway ${gateway.status}`)
     : 'Local chat';
+  $: contextItems = [
+    { label: 'Channel', value: selectedSession?.channel || 'Unknown' },
+    { label: 'Chat ID', value: selectedSession?.id || '—' },
+    {
+      label: 'Routing',
+      value: `${selectedSession?.agentDisplayName || 'Primary'} · ${selectedSession?.agentId || 'main'}`
+    },
+    { label: 'Safety', value: selectedSessionIsGateway ? 'Live · gateway' : 'Local cache' },
+    { label: 'Last activity', value: selectedSession?.lastMessageAt || 'Unknown' }
+  ];
 </script>
 
 <div class="app-frame">
@@ -919,6 +964,21 @@
                 </div>
               {/each}
             </dl>
+            {#if selectedSession}
+              <div class="routing-form">
+                <label>
+                  <span>Agent display name</span>
+                  <input type="text" bind:value={routingAgentDisplayName} placeholder="Primary" />
+                </label>
+                <label>
+                  <span>Agent ID</span>
+                  <input type="text" bind:value={routingAgentId} placeholder="main" />
+                </label>
+                <button class="primary" on:click={saveSessionRouting} disabled={routingSaving}>
+                  {routingSaving ? 'Saving…' : 'Save routing'}
+                </button>
+              </div>
+            {/if}
           {:else if activeRightTab === 'runs'}
             <div class="runs-stack">
               {#each runs as run}

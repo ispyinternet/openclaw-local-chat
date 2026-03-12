@@ -464,6 +464,34 @@ button.primary:disabled {
   font-weight: 600;
 }
 
+.routing-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding-top: 0.25rem;
+}
+
+.routing-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.78rem;
+  color: #9ba6cd;
+}
+
+.routing-form input {
+  width: 100%;
+  background: rgba(14, 16, 28, 0.95);
+  color: #f0f3ff;
+  border: 1px solid rgba(120, 134, 184, 0.55);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+}
+
+.routing-form button {
+  align-self: flex-start;
+}
+
 .runs-stack {
   display: flex;
   flex-direction: column;
