@@ -8,11 +8,19 @@ function normalizeAgentId(value) {
 }
 
 function buildAgentCommandArgs({ sessionId, content, agentId }) {
-  if (isGatewaySessionId(sessionId)) {
-    return ['agent', '--session-id', sessionId, '--message', content, '--json'];
+  const normalizedSessionId = typeof sessionId === 'string' ? sessionId.trim() : '';
+
+  if (isGatewaySessionId(normalizedSessionId)) {
+    return ['agent', '--session-id', normalizedSessionId, '--message', content, '--json'];
   }
 
-  return ['agent', '--agent', normalizeAgentId(agentId), '--message', content, '--json'];
+  const args = ['agent', '--agent', normalizeAgentId(agentId)];
+  if (normalizedSessionId) {
+    args.push('--session-id', normalizedSessionId);
+  }
+
+  args.push('--message', content, '--json');
+  return args;
 }
 
 module.exports = {

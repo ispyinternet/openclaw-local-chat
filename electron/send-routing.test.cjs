@@ -30,7 +30,7 @@ test('buildAgentCommandArgs routes UUID sessions via --session-id', () => {
   ]);
 });
 
-test('buildAgentCommandArgs routes local sessions via selected agent', () => {
+test('buildAgentCommandArgs routes local sessions via selected agent and preserves session continuity', () => {
   const args = buildAgentCommandArgs({
     sessionId: 'sess-local-1',
     content: 'hello',
@@ -41,6 +41,25 @@ test('buildAgentCommandArgs routes local sessions via selected agent', () => {
     'agent',
     '--agent',
     'openai/gpt-5.3-codex',
+    '--session-id',
+    'sess-local-1',
+    '--message',
+    'hello',
+    '--json'
+  ]);
+});
+
+test('buildAgentCommandArgs omits --session-id for blank local ids', () => {
+  const args = buildAgentCommandArgs({
+    sessionId: '   ',
+    content: 'hello',
+    agentId: 'main'
+  });
+
+  assert.deepEqual(args, [
+    'agent',
+    '--agent',
+    'main',
     '--message',
     'hello',
     '--json'
