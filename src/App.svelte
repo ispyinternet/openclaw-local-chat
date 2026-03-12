@@ -362,15 +362,13 @@
     routingSaving = true;
     errorMessage = '';
 
-    const normalizedAgentId = typeof routingAgentId === 'string' ? routingAgentId.trim() : '';
-    const matchingAgent = availableAgents.find((agent) => agent.id === normalizedAgentId);
-    const normalizedDisplayName = typeof routingAgentDisplayName === 'string' ? routingAgentDisplayName.trim() : '';
+    const matchingAgent = availableAgents.find((agent) => agent.id === normalizedRoutingAgentId);
 
     try {
       const updated = await dataClient.setSessionAgent({
         sessionId: selectedSessionId,
-        agentId: normalizedAgentId || 'main',
-        agentDisplayName: normalizedDisplayName || matchingAgent?.displayName || normalizedAgentId || 'Primary'
+        agentId: normalizedRoutingAgentId,
+        agentDisplayName: normalizedRoutingDisplayName || matchingAgent?.displayName || normalizedRoutingAgentId
       });
 
       sections = sections.map((section) => ({
@@ -379,8 +377,8 @@
           session.id === selectedSessionId
             ? {
               ...session,
-              agentId: updated?.agentId || routingAgentId || 'main',
-              agentDisplayName: updated?.agentDisplayName || routingAgentDisplayName || 'Primary'
+              agentId: updated?.agentId || normalizedRoutingAgentId,
+              agentDisplayName: updated?.agentDisplayName || normalizedRoutingDisplayName
             }
             : session
         ))
@@ -797,6 +795,12 @@
 
   $: selectedSession = findSession(selectedSessionId);
   $: syncRoutingDraftFromSession(selectedSession);
+  $: normalizedRoutingAgentId = (routingAgentId || '').trim() || 'main';
+  $: normalizedRoutingDisplayName = (routingAgentDisplayName || '').trim() || normalizedRoutingAgentId;
+  $: routingDirty = Boolean(selectedSession) && (
+    normalizedRoutingAgentId !== (selectedSession?.agentId || 'main') ||
+    normalizedRoutingDisplayName !== (selectedSession?.agentDisplayName || 'Primary')
+  );
   $: selectedSessionIsGateway = isGatewaySessionId(selectedSessionId);
   $: sendDisabled = !composerValue.trim() || sendingMessage || (selectedSessionIsGateway && gateway.status === 'offline');
   $: composerGatewayStatus = selectedSessionIsGateway
@@ -1023,7 +1027,14 @@
                   <button class="ghost" on:click={() => hydrateAvailableAgents()} disabled={agentsLoading}>
                     {agentsLoading ? 'Refreshing…' : 'Refresh agents'}
                   </button>
-                  <button class="primary" on:click={saveSessionRouting} disabled={routingSaving}>
+                  <button
+                    class="ghost"
+                    on:click={() => syncRoutingDraftFromSession(selectedSession)}
+                    disabled={!routingDirty || routingSaving}
+                  >
+                    Revert
+                  </button>
+                  <button class="primary" on:click={saveSessionRouting} disabled={routingSaving || !routingDirty}>
                     {routingSaving ? 'Saving…' : 'Save routing'}
                   </button>
                 </div>
