@@ -61,8 +61,15 @@ function normalizeAgentsPayload(value) {
       .filter(Boolean);
   }
 
-  if (value && typeof value === 'object' && value.agents !== undefined) {
-    return normalizeAgentsPayload(unwrapJsonStrings(value.agents));
+  if (value && typeof value === 'object') {
+    const candidateKeys = ['agents', 'data', 'payload', 'result', 'items'];
+    for (const key of candidateKeys) {
+      if (value[key] === undefined) continue;
+      const nested = normalizeAgentsPayload(unwrapJsonStrings(value[key]));
+      if (nested.length) {
+        return nested;
+      }
+    }
   }
 
   return [];
@@ -108,7 +115,11 @@ function parseAgentsListOutput(stdout) {
     if (inlineArray) candidates.push(inlineArray);
   }
 
+  const seen = new Set();
   for (const candidate of candidates) {
+    const key = typeof candidate === 'string' ? candidate.trim() : JSON.stringify(candidate);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
     try {
       const parsed = unwrapJsonStrings(candidate);
       const normalized = normalizeAgentsPayload(parsed);

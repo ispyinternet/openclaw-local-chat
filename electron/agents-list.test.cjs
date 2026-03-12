@@ -46,3 +46,29 @@ test('parseAgentsListOutput unwraps nested data payload objects', () => {
   const result = parseAgentsListOutput(output);
   assert.deepEqual(result, [{ id: 'ops', displayName: 'Ops', model: '' }]);
 });
+
+test('parseAgentsListOutput handles deeply nested wrapper keys', () => {
+  const output = JSON.stringify({
+    data: {
+      result: {
+        items: [{ id: 'work', name: 'Work Agent', model: 'openai/gpt-5.1-codex' }]
+      }
+    }
+  });
+
+  const result = parseAgentsListOutput(output);
+  assert.deepEqual(result, [{ id: 'work', displayName: 'Work Agent', model: 'openai/gpt-5.1-codex' }]);
+});
+
+test('parseAgentsListOutput handles json-string wrappers around payload containers', () => {
+  const output = JSON.stringify({
+    payload: JSON.stringify({
+      data: JSON.stringify({
+        agents: JSON.stringify([{ id: 'main', name: 'Primary' }])
+      })
+    })
+  });
+
+  const result = parseAgentsListOutput(output);
+  assert.deepEqual(result, [{ id: 'main', displayName: 'Primary', model: '' }]);
+});
