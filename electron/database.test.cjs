@@ -147,3 +147,34 @@ test('addMessage keeps existing chat title stable after initial generation', (t)
     cleanupDb(db, tmpRoot);
   }
 });
+
+test('setSessionAgent persists per-chat agent metadata and defaults display name', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('agent-chat', 'active', 'Agent chat', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    const updated = db.setSessionAgent('agent-chat', {
+      agentId: 'openai/gpt-5.3-codex'
+    });
+
+    assert.equal(updated.agentId, 'openai/gpt-5.3-codex');
+    assert.equal(updated.agentDisplayName, 'openai/gpt-5.3-codex');
+
+    const hydrated = db.getSectionsWithSessions()
+      .flatMap((section) => section.sessions)
+      .find((session) => session.id === 'agent-chat');
+
+    assert.equal(hydrated.agentId, 'openai/gpt-5.3-codex');
+    assert.equal(hydrated.agentDisplayName, 'openai/gpt-5.3-codex');
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});
