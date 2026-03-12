@@ -110,7 +110,12 @@ function collectJsonCandidates(raw) {
     }
   }
 
-  return candidates;
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    if (!candidate || seen.has(candidate)) return false;
+    seen.add(candidate);
+    return true;
+  });
 }
 
 function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
