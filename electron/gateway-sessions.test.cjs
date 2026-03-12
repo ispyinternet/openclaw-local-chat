@@ -67,6 +67,12 @@ test('parseGatewaySessionsOutput extracts inline json from log output', () => {
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput strips ANSI color sequences around payload', () => {
+  const sessions = [{ sessionId: 'g-ansi' }];
+  const stdout = `\u001b[32mresult:\u001b[0m ${JSON.stringify({ sessions })}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
 test('parseGatewaySessionsOutput extracts fenced json payload', () => {
   const sessions = [{ sessionId: 'h' }];
   const stdout = ['logs', '', '```json', JSON.stringify({ sessions }), '```'].join('\n');

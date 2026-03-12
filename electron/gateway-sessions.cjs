@@ -1,3 +1,9 @@
+function stripAnsi(text) {
+  return String(text || '')
+    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, '');
+}
+
 function extractBalancedJson(text, startIndex) {
   if (startIndex < 0 || startIndex >= text.length) return null;
 
@@ -64,7 +70,7 @@ function extractInlineJson(line) {
 
 function collectJsonCandidates(raw) {
   const candidates = [];
-  const text = String(raw);
+  const text = stripAnsi(raw);
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim());
@@ -180,7 +186,7 @@ function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
 }
 
 function parseJsonCandidate(candidate) {
-  let parsed = JSON.parse(candidate);
+  let parsed = JSON.parse(stripAnsi(candidate).trim());
 
   for (let depth = 0; depth < 5; depth += 1) {
     if (typeof parsed !== 'string') break;
@@ -195,7 +201,7 @@ function parseJsonCandidate(candidate) {
 }
 
 function parseGatewaySessionsOutput(stdout) {
-  const raw = String(stdout || '').trim();
+  const raw = stripAnsi(stdout).trim();
   if (!raw) return [];
 
   try {
