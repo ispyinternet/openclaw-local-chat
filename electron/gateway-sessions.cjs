@@ -1,7 +1,9 @@
 function stripAnsi(text) {
   return String(text || '')
     .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
-    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, '');
+    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, '')
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200B-\u200D\u2060]/g, '');
 }
 
 function extractBalancedJson(text, startIndex) {

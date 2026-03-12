@@ -73,6 +73,18 @@ test('parseGatewaySessionsOutput strips ANSI color sequences around payload', ()
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput strips UTF-8 BOM from payload output', () => {
+  const sessions = [{ sessionId: 'g-bom' }];
+  const stdout = `\uFEFF${JSON.stringify({ sessions })}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput strips zero-width chars from data: line', () => {
+  const sessions = [{ sessionId: 'g-zwsp' }];
+  const stdout = `\u200Bdata:\u2060 ${JSON.stringify({ sessions })}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
 test('parseGatewaySessionsOutput extracts fenced json payload', () => {
   const sessions = [{ sessionId: 'h' }];
   const stdout = ['logs', '', '```json', JSON.stringify({ sessions }), '```'].join('\n');
