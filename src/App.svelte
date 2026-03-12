@@ -14,6 +14,7 @@
   let routingAgentDisplayName = 'Primary';
   let routingSaving = false;
   let availableAgents = [];
+  let agentsLoading = false;
 
   const runs = [
     {
@@ -176,8 +177,11 @@
   }
 
   async function hydrateAvailableAgents() {
+    agentsLoading = true;
+
     if (!dataClient?.listAgents) {
       availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
+      agentsLoading = false;
       return;
     }
 
@@ -191,6 +195,8 @@
     } catch (error) {
       console.error('Unable to load agents list', error);
       availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
+    } finally {
+      agentsLoading = false;
     }
   }
 
@@ -355,11 +361,16 @@
 
     routingSaving = true;
     errorMessage = '';
+
+    const normalizedAgentId = typeof routingAgentId === 'string' ? routingAgentId.trim() : '';
+    const matchingAgent = availableAgents.find((agent) => agent.id === normalizedAgentId);
+    const normalizedDisplayName = typeof routingAgentDisplayName === 'string' ? routingAgentDisplayName.trim() : '';
+
     try {
       const updated = await dataClient.setSessionAgent({
         sessionId: selectedSessionId,
-        agentId: routingAgentId,
-        agentDisplayName: routingAgentDisplayName
+        agentId: normalizedAgentId || 'main',
+        agentDisplayName: normalizedDisplayName || matchingAgent?.displayName || normalizedAgentId || 'Primary'
       });
 
       sections = sections.map((section) => ({
@@ -1008,9 +1019,14 @@
                 {#if availableAgents.length}
                   <p class="meta">Available agents: {availableAgents.map((agent) => agent.id).join(', ')}</p>
                 {/if}
-                <button class="primary" on:click={saveSessionRouting} disabled={routingSaving}>
-                  {routingSaving ? 'Saving…' : 'Save routing'}
-                </button>
+                <div class="composer-controls">
+                  <button class="ghost" on:click={() => hydrateAvailableAgents()} disabled={agentsLoading}>
+                    {agentsLoading ? 'Refreshing…' : 'Refresh agents'}
+                  </button>
+                  <button class="primary" on:click={saveSessionRouting} disabled={routingSaving}>
+                    {routingSaving ? 'Saving…' : 'Save routing'}
+                  </button>
+                </div>
               </div>
             {/if}
           {:else if activeRightTab === 'runs'}
