@@ -60,6 +60,7 @@
   let sections = buildSectionsFromSeed();
   let selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
   let messages = buildMessagesFromSeed(selectedSessionId);
+  maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
   let selectedSession = findSession(selectedSessionId);
   let activeRightTab = 'context';
   let composerValue = '';
@@ -120,6 +121,7 @@
       messages = payload.messages?.length ? payload.messages : buildMessagesFromSeed(selectedSessionId);
       selectedSession = findSession(selectedSessionId);
       restoreDraftForSession(selectedSessionId);
+      maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
     } catch (error) {
       console.error('Failed to read persisted conversations', error);
       errorMessage = 'Unable to open the stored SQLite cache. Showing demo data instead.';
@@ -127,6 +129,7 @@
       selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
       messages = buildMessagesFromSeed(selectedSessionId);
       restoreDraftForSession(selectedSessionId);
+      maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
     } finally {
       loading = false;
     }
@@ -192,6 +195,7 @@
         if (selectedSessionId) {
           const client = dataClient ?? fallbackAdapter;
           messages = await client.getMessages(selectedSessionId);
+          maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
         } else {
           messages = [];
         }
@@ -280,6 +284,7 @@
       sessionDrafts = {};
       queuePersistDrafts();
       restoreDraftForSession(selectedSessionId);
+      maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
       errorMessage = '';
       searchQuery = '';
       searchResults = [];
@@ -303,10 +308,12 @@
     try {
       const client = dataClient ?? fallbackAdapter;
       messages = await client.getMessages(sessionId);
+      maybeHydrateChatTitleFromMessages(sessionId, messages);
     } catch (error) {
       console.error('Failed to load messages', error);
       errorMessage = 'Unable to load messages for that chat. Showing offline data if available.';
       messages = buildMessagesFromSeed(sessionId);
+      maybeHydrateChatTitleFromMessages(sessionId, messages);
     }
 
     searchQuery = '';
@@ -354,6 +361,41 @@
 
       return { ...section, sessions: nextSessions };
     });
+  }
+
+  function deriveChatTitleFromMessages(messageList = []) {
+    if (!Array.isArray(messageList)) {
+      return null;
+    }
+
+    const firstUserMessage = messageList.find(
+      (message) =>
+        message &&
+        typeof message.content === 'string' &&
+        message.content.trim() &&
+        typeof message.role === 'string' &&
+        message.role.toLowerCase() === 'user'
+    );
+
+    return firstUserMessage ? generateChatTitle(firstUserMessage.content) : null;
+  }
+
+  function maybeHydrateChatTitleFromMessages(sessionId, messageList) {
+    if (!sessionId || !Array.isArray(messageList) || !messageList.length) {
+      return;
+    }
+
+    const session = findSession(sessionId);
+    if (!session || !isUntitledChat(session.name)) {
+      return;
+    }
+
+    const generatedTitle = deriveChatTitleFromMessages(messageList);
+    if (!generatedTitle) {
+      return;
+    }
+
+    updateSessionTitle(sessionId, generatedTitle);
   }
 
   async function sendCurrentMessage() {
@@ -713,13 +755,13 @@
   </header>
 
   <div class={`shell-grid ${sideRailOpen ? '' : 'rail-collapsed'}`}>
-    <aside class="session-rail" aria-label="Chat list">
+    <aside class="chat-rail" aria-label="Chat list">
       {#each sections as section}
-        <div class="session-section">
+        <div class="chat-section">
           <p class="section-label">{section.title}</p>
           {#each section.sessions as session}
             <button
-              class={`session-tile ${session.id === selectedSessionId ? 'active' : ''}`}
+              class={`chat-tile ${session.id === selectedSessionId ? 'active' : ''}`}
               on:click={() => selectSession(session.id)}
             >
               <div class="tile-main">
@@ -775,7 +817,7 @@
           {:else}
             {#each searchResults as result}
               <button class="search-hit" on:click={() => jumpToSearchResult(result)}>
-                <span class="hit-session">{result.sessionName} · {result.sessionChannel}</span>
+                <span class="hit-chat">{result.sessionName} · {result.sessionChannel}</span>
                 <span class="hit-excerpt" aria-label={`Snippet from ${result.author}`}>
                   {@html result.snippet}
                 </span>

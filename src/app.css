@@ -190,13 +190,13 @@ button.primary:disabled {
   grid-template-columns: 280px minmax(0, 1fr);
 }
 
-.session-rail {
+.chat-rail {
   border-right: 1px solid rgba(255, 255, 255, 0.05);
   padding: 1rem 1rem 1.5rem;
   overflow-y: auto;
 }
 
-.session-section + .session-section {
+.chat-section + .chat-section {
   margin-top: 1.25rem;
 }
 
@@ -208,7 +208,7 @@ button.primary:disabled {
   text-transform: uppercase;
 }
 
-.session-tile {
+.chat-tile {
   width: 100%;
   background: rgba(255, 255, 255, 0.02);
   border-radius: 14px;
@@ -220,12 +220,12 @@ button.primary:disabled {
   margin-bottom: 0.4rem;
 }
 
-.session-tile.active {
+.chat-tile.active {
   background: linear-gradient(120deg, rgba(122, 123, 255, 0.18), rgba(167, 107, 255, 0.2));
   box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
 }
 
-.session-tile .tile-main {
+.chat-tile .tile-main {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -547,7 +547,7 @@ button.primary:disabled {
   gap: 0.15rem;
 }
 
-.hit-session,
+.hit-chat,
 .hit-meta {
   font-size: 0.72rem;
   color: #97a0bf;
@@ -644,7 +644,7 @@ button.danger {
 }
 
 @media (max-width: 880px) {
-  .session-rail {
+  .chat-rail {
     display: none;
   }
 
