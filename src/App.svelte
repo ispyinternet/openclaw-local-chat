@@ -13,6 +13,7 @@
   let routingAgentId = 'main';
   let routingAgentDisplayName = 'Primary';
   let routingSaving = false;
+  let availableAgents = [];
 
   const runs = [
     {
@@ -88,7 +89,13 @@
 
   onMount(async () => {
     const removeKeydown = bindKeyboardShortcuts();
-    await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences(), hydrateComposerDrafts()]);
+    await Promise.all([
+      hydrateFromDatabase(),
+      hydrateAppMeta(),
+      hydratePreferences(),
+      hydrateComposerDrafts(),
+      hydrateAvailableAgents()
+    ]);
     await hydrateGatewaySessions({ silentError: true });
     heartbeatTimer = setInterval(() => {
       refreshHeartbeatLabel();
@@ -165,6 +172,25 @@
       restoreDraftForSession(selectedSessionId);
     } catch (error) {
       console.error('Unable to load composer drafts', error);
+    }
+  }
+
+  async function hydrateAvailableAgents() {
+    if (!dataClient?.listAgents) {
+      availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
+      return;
+    }
+
+    try {
+      const rows = await dataClient.listAgents();
+      if (Array.isArray(rows) && rows.length) {
+        availableAgents = rows;
+      } else {
+        availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
+      }
+    } catch (error) {
+      console.error('Unable to load agents list', error);
+      availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
     }
   }
 
@@ -972,8 +998,16 @@
                 </label>
                 <label>
                   <span>Agent ID</span>
-                  <input type="text" bind:value={routingAgentId} placeholder="main" />
+                  <input type="text" bind:value={routingAgentId} placeholder="main" list="agent-id-suggestions" />
                 </label>
+                <datalist id="agent-id-suggestions">
+                  {#each availableAgents as agent}
+                    <option value={agent.id}>{agent.displayName}</option>
+                  {/each}
+                </datalist>
+                {#if availableAgents.length}
+                  <p class="meta">Available agents: {availableAgents.map((agent) => agent.id).join(', ')}</p>
+                {/if}
                 <button class="primary" on:click={saveSessionRouting} disabled={routingSaving}>
                   {routingSaving ? 'Saving…' : 'Save routing'}
                 </button>

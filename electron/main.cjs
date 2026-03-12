@@ -5,6 +5,7 @@ const { promisify } = require('node:util');
 const { createDatabase } = require('./database.cjs');
 const { extractAgentText } = require('./agent-response.cjs');
 const { parseGatewaySessionsOutput } = require('./gateway-sessions.cjs');
+const { parseAgentsListOutput } = require('./agents-list.cjs');
 const { summarizeExecError } = require('./cli-error.cjs');
 const { buildAgentCommandArgs } = require('./send-routing.cjs');
 
@@ -104,6 +105,16 @@ ipcMain.handle('data:sync-gateway-sessions', async () => {
   } catch (error) {
     const reason = summarizeExecError(error, 'Unable to sync sessions');
     throw new Error(`Unable to sync sessions: ${reason}`);
+  }
+});
+
+ipcMain.handle('data:list-agents', async () => {
+  try {
+    const { stdout } = await execFileAsync('openclaw', ['agents', 'list', '--json'], { maxBuffer: 2 * 1024 * 1024 });
+    return parseAgentsListOutput(stdout);
+  } catch (error) {
+    const reason = summarizeExecError(error, 'Unable to list agents');
+    throw new Error(`Unable to list agents: ${reason}`);
   }
 });
 
