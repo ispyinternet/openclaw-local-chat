@@ -16,6 +16,22 @@ test('normalizeAgentsPayload keeps valid ids and derives display names', () => {
   ]);
 });
 
+test('normalizeAgentsPayload accepts string entries and alternate id/display/model keys', () => {
+  const result = normalizeAgentsPayload([
+    'main',
+    { agentId: 'ops', displayName: 'Ops Agent', modelId: 'openai/gpt-5.1-codex' },
+    { agent_id: 'build', display_name: 'Build Bot', model_id: 'openai/gpt-5.3-codex' },
+    { key: 'triage', title: 'Triage', model: 'openai/gpt-5.1-codex' }
+  ]);
+
+  assert.deepEqual(result, [
+    { id: 'main', displayName: 'main', model: '' },
+    { id: 'ops', displayName: 'Ops Agent', model: 'openai/gpt-5.1-codex' },
+    { id: 'build', displayName: 'Build Bot', model: 'openai/gpt-5.3-codex' },
+    { id: 'triage', displayName: 'Triage', model: 'openai/gpt-5.1-codex' }
+  ]);
+});
+
 test('parseAgentsListOutput parses direct JSON arrays', () => {
   const result = parseAgentsListOutput('[{"id":"main","name":"Primary"}]');
   assert.deepEqual(result, [{ id: 'main', displayName: 'Primary', model: '' }]);

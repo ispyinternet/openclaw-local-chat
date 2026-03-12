@@ -49,13 +49,27 @@ function normalizeAgentsPayload(value) {
   if (Array.isArray(value)) {
     return value
       .map((item) => {
+        if (typeof item === 'string') {
+          const id = item.trim();
+          if (!id) return null;
+          return { id, displayName: id, model: '' };
+        }
+
         if (!item || typeof item !== 'object') return null;
-        const id = typeof item.id === 'string' ? item.id.trim() : '';
+
+        const idCandidate = item.id ?? item.agentId ?? item.agent_id ?? item.key;
+        const id = typeof idCandidate === 'string' ? idCandidate.trim() : '';
         if (!id) return null;
+
+        const displayNameCandidate = item.name ?? item.displayName ?? item.display_name ?? item.title;
+        const modelCandidate = item.model ?? item.modelId ?? item.model_id;
+
         return {
           id,
-          displayName: typeof item.name === 'string' && item.name.trim() ? item.name.trim() : id,
-          model: typeof item.model === 'string' ? item.model : ''
+          displayName: typeof displayNameCandidate === 'string' && displayNameCandidate.trim()
+            ? displayNameCandidate.trim()
+            : id,
+          model: typeof modelCandidate === 'string' ? modelCandidate : ''
         };
       })
       .filter(Boolean);
