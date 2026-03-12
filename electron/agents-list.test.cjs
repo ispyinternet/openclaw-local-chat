@@ -34,3 +34,15 @@ test('parseAgentsListOutput parses data: wrapped arrays from noisy output', () =
     { id: 'work', displayName: 'Work Agent', model: 'openai/gpt-5.1-codex' }
   ]);
 });
+
+test('parseAgentsListOutput unwraps json-encoded string arrays', () => {
+  const output = '"[{\\"id\\":\\"main\\",\\"name\\":\\"Primary\\"}]"';
+  const result = parseAgentsListOutput(output);
+  assert.deepEqual(result, [{ id: 'main', displayName: 'Primary', model: '' }]);
+});
+
+test('parseAgentsListOutput unwraps nested data payload objects', () => {
+  const output = 'data: {"agents":"[{\\"id\\":\\"ops\\",\\"name\\":\\"Ops\\"}]"}';
+  const result = parseAgentsListOutput(output);
+  assert.deepEqual(result, [{ id: 'ops', displayName: 'Ops', model: '' }]);
+});

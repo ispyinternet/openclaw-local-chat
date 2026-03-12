@@ -61,11 +61,35 @@ function normalizeAgentsPayload(value) {
       .filter(Boolean);
   }
 
-  if (value && typeof value === 'object' && Array.isArray(value.agents)) {
-    return normalizeAgentsPayload(value.agents);
+  if (value && typeof value === 'object' && value.agents !== undefined) {
+    return normalizeAgentsPayload(unwrapJsonStrings(value.agents));
   }
 
   return [];
+}
+
+function unwrapJsonStrings(value, depthLimit = 4) {
+  let current = value;
+  for (let depth = 0; depth < depthLimit; depth += 1) {
+    if (typeof current !== 'string') return current;
+    const trimmed = current.trim();
+    if (!trimmed) return current;
+
+    const looksJson =
+      trimmed.startsWith('{') ||
+      trimmed.startsWith('[') ||
+      (trimmed.startsWith('"') && trimmed.endsWith('"'));
+
+    if (!looksJson) return current;
+
+    try {
+      current = JSON.parse(trimmed);
+    } catch {
+      return current;
+    }
+  }
+
+  return current;
 }
 
 function parseAgentsListOutput(stdout) {
@@ -86,7 +110,7 @@ function parseAgentsListOutput(stdout) {
 
   for (const candidate of candidates) {
     try {
-      const parsed = JSON.parse(candidate);
+      const parsed = unwrapJsonStrings(candidate);
       const normalized = normalizeAgentsPayload(parsed);
       if (normalized.length > 0) return normalized;
     } catch {
