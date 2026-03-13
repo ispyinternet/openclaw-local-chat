@@ -606,6 +606,18 @@
         return;
       }
 
+      if (event.key === ',') {
+        event.preventDefault();
+        showSettings = true;
+        return;
+      }
+
+      if (event.shiftKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        void hydrateGatewaySessions();
+        return;
+      }
+
       if (event.shiftKey && event.key === '[') {
         event.preventDefault();
         selectAdjacentSession(-1);
