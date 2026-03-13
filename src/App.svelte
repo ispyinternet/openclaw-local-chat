@@ -126,6 +126,8 @@
       selectedSession = findSession(selectedSessionId);
       restoreDraftForSession(selectedSessionId);
       maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     } catch (error) {
       console.error('Failed to read persisted conversations', error);
       errorMessage = 'Unable to open the stored SQLite cache. Showing demo data instead.';
@@ -134,6 +136,8 @@
       messages = buildMessagesFromSeed(selectedSessionId);
       restoreDraftForSession(selectedSessionId);
       maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     } finally {
       loading = false;
     }
@@ -224,6 +228,8 @@
           const client = dataClient ?? fallbackAdapter;
           messages = await client.getMessages(selectedSessionId);
           maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
+          await tick();
+          scrollToLatestMessage();
         } else {
           messages = [];
         }
@@ -338,11 +344,15 @@
       const client = dataClient ?? fallbackAdapter;
       messages = await client.getMessages(sessionId);
       maybeHydrateChatTitleFromMessages(sessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     } catch (error) {
       console.error('Failed to load messages', error);
       errorMessage = 'Unable to load messages for that chat. Showing offline data if available.';
       messages = buildMessagesFromSeed(sessionId);
       maybeHydrateChatTitleFromMessages(sessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     }
 
     searchQuery = '';
@@ -785,6 +795,13 @@
     await selectSession(result.sessionId);
     await tick();
     highlightMessage(result.id);
+  }
+
+  function scrollToLatestMessage({ smooth = false } = {}) {
+    if (typeof document === 'undefined') return;
+    const node = document.querySelector('.message-list article:last-child');
+    if (!node) return;
+    node.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
   }
 
   function highlightMessage(messageId) {
