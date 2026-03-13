@@ -321,6 +321,19 @@ button.primary:disabled {
   font-size: 1.4rem;
 }
 
+.header-agent-pill {
+  display: inline-flex;
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #cfd7ff;
+  background: rgba(122, 123, 255, 0.2);
+  border: 1px solid rgba(122, 123, 255, 0.35);
+  border-radius: 999px;
+  padding: 0.15rem 0.52rem;
+}
+
 .timeline-actions {
   display: flex;
   gap: 0.5rem;

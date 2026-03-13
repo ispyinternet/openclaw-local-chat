@@ -74,7 +74,7 @@
   let highlightTimeout;
   let draftPersistTimer;
   let showSettings = false;
-  let sideRailOpen = true;
+  let sideRailOpen = false;
   let settingsSaving = false;
   let resettingData = false;
   let sendingMessage = false;
@@ -891,6 +891,9 @@
         <div>
           <p class="eyebrow">Current chat</p>
           <h2>{selectedSession?.name ?? 'Chat'}</h2>
+          <span class="header-agent-pill" title={`Agent: ${selectedSession?.agentId || 'main'}`}>
+            Agent · {selectedSession?.agentDisplayName || selectedSession?.agentId || 'Primary'}
+          </span>
         </div>
         <div class="timeline-actions">
           <input
