@@ -30,6 +30,22 @@ test('buildAgentCommandArgs routes UUID sessions via --session-id', () => {
   ]);
 });
 
+test('buildAgentCommandArgs trims UUID session ids before routing', () => {
+  const args = buildAgentCommandArgs({
+    sessionId: '  d6d72af5-8b93-49ba-8cd3-4449155183ed  ',
+    content: 'hello'
+  });
+
+  assert.deepEqual(args, [
+    'agent',
+    '--session-id',
+    'd6d72af5-8b93-49ba-8cd3-4449155183ed',
+    '--message',
+    'hello',
+    '--json'
+  ]);
+});
+
 test('buildAgentCommandArgs routes local sessions via selected agent and preserves session continuity', () => {
   const args = buildAgentCommandArgs({
     sessionId: 'sess-local-1',

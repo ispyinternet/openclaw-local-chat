@@ -6,7 +6,7 @@ A local-first Electron + Svelte desktop client for OpenClaw sessions.
 
 - Loads/saves sessions and messages in a local SQLite cache
 - Syncs gateway sessions via `openclaw sessions --json`
-- Sends messages to gateway-backed sessions via `openclaw agent --session-id ... --json`
+- Sends messages via `openclaw agent --json` with session-aware routing (`--session-id` for gateway and local continuity, plus per-chat `--agent` for local threads)
 - Shows search, session switching, status/heartbeat, and basic settings
 - Surfaces CLI failures with clearer timeout/exit/stderr diagnostics
 
