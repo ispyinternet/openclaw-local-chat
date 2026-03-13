@@ -860,7 +860,12 @@
                   </div>
                   <p class="preview">{session.preview}</p>
                 </div>
-                <span class={`chip ${session.chip}`}>{session.channel}</span>
+                <div class="tile-meta">
+                  <span class={`chip ${session.chip}`}>{session.channel}</span>
+                  <span class="agent-pill" title={`Agent: ${session.agentId || 'main'}`}>
+                    {session.agentDisplayName || session.agentId || 'Primary'}
+                  </span>
+                </div>
               </div>
               <span class={`status-dot ${session.status}`}></span>
             </button>
