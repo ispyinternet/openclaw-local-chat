@@ -287,7 +287,7 @@
 
   async function copyCurrentChatId() {
     const chatId = selectedSession?.id;
-    if (!chatId || !navigator?.clipboard?.writeText) {
+    if (!chatId) {
       copyChatIdState = 'error';
       if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
       copyChatIdTimer = setTimeout(() => {
@@ -297,7 +297,24 @@
     }
 
     try {
-      await navigator.clipboard.writeText(chatId);
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(chatId);
+      } else {
+        const scratch = document.createElement('textarea');
+        scratch.value = chatId;
+        scratch.setAttribute('readonly', 'true');
+        scratch.style.position = 'fixed';
+        scratch.style.opacity = '0';
+        document.body.appendChild(scratch);
+        scratch.select();
+        scratch.setSelectionRange(0, scratch.value.length);
+        const copied = document.execCommand('copy');
+        document.body.removeChild(scratch);
+        if (!copied) {
+          throw new Error('execCommand copy returned false');
+        }
+      }
+
       copyChatIdState = 'copied';
     } catch (error) {
       console.error('Unable to copy chat id', error);
