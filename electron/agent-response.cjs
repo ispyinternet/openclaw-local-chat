@@ -8,8 +8,10 @@ function toText(value) {
         if (typeof item === 'string') return item;
         if (item && typeof item === 'object') {
           if (typeof item.text === 'string') return item.text;
+          if (typeof item.output_text === 'string') return item.output_text;
           if (typeof item.content === 'string') return item.content;
           if (typeof item.value === 'string') return item.value;
+          if (Array.isArray(item.content)) return toText(item.content);
         }
         return '';
       })
@@ -22,6 +24,7 @@ function toText(value) {
   if (value && typeof value === 'object') {
     if (typeof value.message === 'string') return value.message;
     if (typeof value.text === 'string') return value.text;
+    if (typeof value.output_text === 'string') return value.output_text;
     if (typeof value.content === 'string') return value.content;
     if (typeof value.value === 'string') return value.value;
     if (Array.isArray(value.content)) return toText(value.content);
@@ -37,8 +40,10 @@ function extractTextFromPayload(payload) {
     toText(payload?.result?.payloads) ||
     toText(payload?.payloads) ||
     toText(payload?.result?.message) ||
+    toText(payload?.result?.output_text) ||
     toText(payload?.message) ||
     toText(payload?.text) ||
+    toText(payload?.output_text) ||
     toText(payload?.output) ||
     toText(payload?.response) ||
     ''
