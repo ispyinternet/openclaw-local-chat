@@ -66,4 +66,5 @@ Output:
 
 - Non-gateway/demo sessions are handled locally (no CLI send)
 - Settings currently include gateway URL and theme
-- If the OpenClaw CLI is missing, sync/send errors will explicitly state that
+- Context panel includes per-chat routing controls and a copy-chat-id action
+- If the OpenClaw CLI is missing (or not executable), sync/send errors will explicitly state that
