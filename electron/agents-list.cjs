@@ -47,7 +47,7 @@ function extractInlineJsonArray(line) {
 
 function normalizeAgentsPayload(value) {
   if (Array.isArray(value)) {
-    return value
+    const normalizedRows = value
       .map((item) => {
         if (typeof item === 'string') {
           const id = item.trim();
@@ -69,10 +69,20 @@ function normalizeAgentsPayload(value) {
           displayName: typeof displayNameCandidate === 'string' && displayNameCandidate.trim()
             ? displayNameCandidate.trim()
             : id,
-          model: typeof modelCandidate === 'string' ? modelCandidate : ''
+          model: typeof modelCandidate === 'string' ? modelCandidate.trim() : ''
         };
       })
       .filter(Boolean);
+
+    const deduped = [];
+    const seenIds = new Set();
+    for (const row of normalizedRows) {
+      if (seenIds.has(row.id)) continue;
+      seenIds.add(row.id);
+      deduped.push(row);
+    }
+
+    return deduped;
   }
 
   if (value && typeof value === 'object') {

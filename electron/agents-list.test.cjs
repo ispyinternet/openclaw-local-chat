@@ -32,6 +32,19 @@ test('normalizeAgentsPayload accepts string entries and alternate id/display/mod
   ]);
 });
 
+test('normalizeAgentsPayload deduplicates duplicate ids and trims model values', () => {
+  const result = normalizeAgentsPayload([
+    { id: 'main', name: 'Primary', model: ' openai/gpt-5.3-codex ' },
+    { id: 'main', name: 'Duplicate should be ignored', model: 'ignored' },
+    { agentId: 'ops', displayName: 'Ops', modelId: ' openai/gpt-5.1-codex ' }
+  ]);
+
+  assert.deepEqual(result, [
+    { id: 'main', displayName: 'Primary', model: 'openai/gpt-5.3-codex' },
+    { id: 'ops', displayName: 'Ops', model: 'openai/gpt-5.1-codex' }
+  ]);
+});
+
 test('parseAgentsListOutput parses direct JSON arrays', () => {
   const result = parseAgentsListOutput('[{"id":"main","name":"Primary"}]');
   assert.deepEqual(result, [{ id: 'main', displayName: 'Primary', model: '' }]);
