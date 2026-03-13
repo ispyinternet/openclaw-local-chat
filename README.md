@@ -58,6 +58,7 @@ Output:
 - `⌘/Ctrl + F` — focus search
 - `⌘/Ctrl + ,` — open settings
 - `⌘/Ctrl + Shift + R` — sync chats
+- `⌘/Ctrl + Shift + L` — focus composer
 - `⌘/Ctrl + Shift + [` — previous session
 - `⌘/Ctrl + Shift + ]` — next session
 - `Esc` — close settings or collapse right panel

@@ -79,6 +79,7 @@
   let resettingData = false;
   let sendingMessage = false;
   let searchInputEl;
+  let composerInputEl;
   let appMeta = { version: '0.0.0', platform: 'unknown' };
   let preferences = { gatewayUrl: 'http://localhost:4111', theme: 'system' };
   let syncInFlight = false;
@@ -616,6 +617,13 @@
     searchInputEl.select();
   }
 
+  function focusComposerInput() {
+    if (!composerInputEl) return;
+    composerInputEl.focus();
+    const len = composerInputEl.value?.length ?? 0;
+    composerInputEl.setSelectionRange(len, len);
+  }
+
   function selectAdjacentSession(direction = 1) {
     const allSessions = sections.flatMap((section) => section.sessions);
     if (!allSessions.length) return;
@@ -678,6 +686,12 @@
       if (event.shiftKey && event.key.toLowerCase() === 'r') {
         event.preventDefault();
         void hydrateGatewaySessions();
+        return;
+      }
+
+      if (event.shiftKey && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        focusComposerInput();
         return;
       }
 
@@ -1055,6 +1069,7 @@
             placeholder="Write a message, /command, or paste logs"
             value={composerValue}
             rows="2"
+            bind:this={composerInputEl}
             on:input={handleComposerInput}
             on:keydown={handleComposerKeydown}
           ></textarea>
