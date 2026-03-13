@@ -8,6 +8,7 @@ A local-first Electron + Svelte desktop client for OpenClaw sessions.
 - Syncs gateway sessions via `openclaw sessions --json`
 - Sends messages via `openclaw agent --json` with session-aware routing (`--session-id` for gateway and local continuity, plus per-chat `--agent` for local threads)
 - Shows search, session switching, status/heartbeat, and basic settings
+- Lets you copy the active chat ID from the Context panel for support/debug workflows
 - Surfaces active agent badges in both chat list and chat header
 - Starts with right context rail collapsed for chat-focused default layout
 - Surfaces CLI failures with clearer timeout/exit/stderr diagnostics
