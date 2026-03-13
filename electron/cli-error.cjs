@@ -7,6 +7,10 @@ function summarizeExecError(error, fallback = 'unknown error') {
     return 'OpenClaw CLI not found on PATH.';
   }
 
+  if (error.code === 'EACCES' || error.code === 'EPERM') {
+    return 'OpenClaw CLI is not executable (permission denied).';
+  }
+
   if (error.killed || error.signal === 'SIGTERM') {
     messageParts.push('command timed out');
   }

@@ -7,6 +7,18 @@ test('maps ENOENT to missing CLI message', () => {
   assert.equal(message, 'OpenClaw CLI not found on PATH.');
 });
 
+test('maps permission errors to executable guidance', () => {
+  assert.equal(
+    summarizeExecError({ code: 'EACCES' }, 'fallback'),
+    'OpenClaw CLI is not executable (permission denied).'
+  );
+
+  assert.equal(
+    summarizeExecError({ code: 'EPERM' }, 'fallback'),
+    'OpenClaw CLI is not executable (permission denied).'
+  );
+});
+
 test('prefers stderr details and includes timeout/exit context', () => {
   const message = summarizeExecError(
     {
