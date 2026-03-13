@@ -573,10 +573,17 @@
     }
   }
 
+  function isEditableShortcutTarget(target) {
+    if (!target || typeof target.closest !== 'function') return false;
+    return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+  }
+
   function bindKeyboardShortcuts() {
     if (typeof window === 'undefined') return null;
 
     const onKeydown = (event) => {
+      const isEditableTarget = isEditableShortcutTarget(event.target);
+
       if (event.key === 'Escape') {
         if (showSettings) {
           event.preventDefault();
@@ -584,7 +591,7 @@
           return;
         }
 
-        if (sideRailOpen) {
+        if (!isEditableTarget && sideRailOpen) {
           event.preventDefault();
           sideRailOpen = false;
         }
@@ -592,7 +599,7 @@
       }
 
       const hasPrimaryModifier = event.metaKey || event.ctrlKey;
-      if (!hasPrimaryModifier) return;
+      if (!hasPrimaryModifier || isEditableTarget) return;
 
       if (event.key.toLowerCase() === 'k') {
         event.preventDefault();
