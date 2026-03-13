@@ -6,15 +6,18 @@ function stripAnsi(text) {
     .trim();
 }
 
-function extractInlineJsonArray(line) {
-  const start = line.indexOf('[');
-  if (start === -1) return null;
+function extractBalancedInlineJson(line, startIndex) {
+  if (startIndex < 0 || startIndex >= line.length) return null;
+
+  const opening = line[startIndex];
+  const closing = opening === '[' ? ']' : opening === '{' ? '}' : null;
+  if (!closing) return null;
 
   let depth = 0;
   let inString = false;
   let escaping = false;
 
-  for (let index = start; index < line.length; index += 1) {
+  for (let index = startIndex; index < line.length; index += 1) {
     const char = line[index];
 
     if (inString) {
@@ -33,13 +36,29 @@ function extractInlineJsonArray(line) {
       continue;
     }
 
-    if (char === '[') depth += 1;
-    if (char === ']') {
+    if (char === opening) depth += 1;
+    if (char === closing) {
       depth -= 1;
       if (depth === 0) {
-        return line.slice(start, index + 1);
+        return line.slice(startIndex, index + 1);
       }
     }
+  }
+
+  return null;
+}
+
+function extractInlineJson(line) {
+  const firstBrace = line.indexOf('{');
+  const firstBracket = line.indexOf('[');
+
+  const starts = [firstBrace, firstBracket]
+    .filter((index) => index !== -1)
+    .sort((a, b) => a - b);
+
+  for (const startIndex of starts) {
+    const candidate = extractBalancedInlineJson(line, startIndex);
+    if (candidate) return candidate;
   }
 
   return null;
@@ -135,8 +154,8 @@ function parseAgentsListOutput(stdout) {
     const dataPrefix = trimmed.match(/^data:\s*(.+)$/i);
     if (dataPrefix?.[1]) candidates.push(dataPrefix[1]);
 
-    const inlineArray = extractInlineJsonArray(trimmed);
-    if (inlineArray) candidates.push(inlineArray);
+    const inlineJson = extractInlineJson(trimmed);
+    if (inlineJson) candidates.push(inlineJson);
   }
 
   const seen = new Set();

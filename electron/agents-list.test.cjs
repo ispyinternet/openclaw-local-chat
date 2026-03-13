@@ -64,6 +64,19 @@ test('parseAgentsListOutput parses data: wrapped arrays from noisy output', () =
   ]);
 });
 
+test('parseAgentsListOutput extracts inline JSON objects from noisy log lines', () => {
+  const output = [
+    'info: warm-up complete',
+    'result: {"agents":[{"id":"main","name":"Primary"},{"id":"ops","name":"Ops"}]} trailing [debug]',
+  ].join('\n');
+
+  const result = parseAgentsListOutput(output);
+  assert.deepEqual(result, [
+    { id: 'main', displayName: 'Primary', model: '' },
+    { id: 'ops', displayName: 'Ops', model: '' }
+  ]);
+});
+
 test('parseAgentsListOutput unwraps json-encoded string arrays', () => {
   const output = '"[{\\"id\\":\\"main\\",\\"name\\":\\"Primary\\"}]"';
   const result = parseAgentsListOutput(output);
