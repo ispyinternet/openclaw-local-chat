@@ -831,6 +831,7 @@
 
   $: selectedSession = findSession(selectedSessionId);
   $: syncRoutingDraftFromSession(selectedSession);
+  $: gatewayStatusPill = statusPills[gateway.status] || statusPills.degraded;
   $: normalizedRoutingAgentId = (routingAgentId || '').trim() || 'main';
   $: normalizedRoutingDisplayName = (routingAgentDisplayName || '').trim() || normalizedRoutingAgentId;
   $: routingDirty = Boolean(selectedSession) && (
@@ -862,7 +863,7 @@
         <strong>{gateway.name}</strong>
       </div>
       <div class="gateway-meta">
-        <span class={`pill ${statusPills[gateway.status].tone}`}>{statusPills[gateway.status].label}</span>
+        <span class={`pill ${gatewayStatusPill.tone}`}>{gatewayStatusPill.label}</span>
         <span class="meta">{gateway.endpoint}</span>
         <span class="meta">Last heartbeat · {gateway.heartbeat}</span>
       </div>
