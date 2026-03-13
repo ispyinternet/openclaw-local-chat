@@ -84,6 +84,8 @@
   let syncInFlight = false;
   let lastSyncedAt = null;
   let heartbeatTimer;
+  let copyChatIdState = 'idle';
+  let copyChatIdTimer;
 
   const chatDesktop = typeof window !== 'undefined' ? window.chatDesktop : undefined;
   const dataClient = chatDesktop?.data;
@@ -108,6 +110,7 @@
       if (highlightTimeout) clearTimeout(highlightTimeout);
       if (draftPersistTimer) clearTimeout(draftPersistTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
       removeKeydown?.();
     };
   });
@@ -282,6 +285,31 @@
     await hydrateGatewaySessions();
   }
 
+  async function copyCurrentChatId() {
+    const chatId = selectedSession?.id;
+    if (!chatId || !navigator?.clipboard?.writeText) {
+      copyChatIdState = 'error';
+      if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
+      copyChatIdTimer = setTimeout(() => {
+        copyChatIdState = 'idle';
+      }, 2000);
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(chatId);
+      copyChatIdState = 'copied';
+    } catch (error) {
+      console.error('Unable to copy chat id', error);
+      copyChatIdState = 'error';
+    }
+
+    if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
+    copyChatIdTimer = setTimeout(() => {
+      copyChatIdState = 'idle';
+    }, 2000);
+  }
+
   function applyTheme(theme) {
     if (typeof document === 'undefined') return;
     const resolved = theme === 'system'
@@ -339,6 +367,7 @@
     persistDraftForSession(selectedSessionId, composerValue);
     selectedSessionId = sessionId;
     selectedSession = findSession(sessionId);
+    copyChatIdState = 'idle';
     syncRoutingDraftFromSession(selectedSession);
     try {
       const client = dataClient ?? fallbackAdapter;
@@ -1069,6 +1098,9 @@
                   <p class="meta">Available agents: {availableAgents.map((agent) => agent.id).join(', ')}</p>
                 {/if}
                 <div class="composer-controls">
+                  <button class="ghost" on:click={copyCurrentChatId}>
+                    {copyChatIdState === 'copied' ? 'Copied chat ID' : copyChatIdState === 'error' ? 'Copy failed' : 'Copy chat ID'}
+                  </button>
                   <button class="ghost" on:click={() => hydrateAvailableAgents()} disabled={agentsLoading}>
                     {agentsLoading ? 'Refreshing…' : 'Refresh agents'}
                   </button>
