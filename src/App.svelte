@@ -465,6 +465,15 @@
     }
   }
 
+  async function quickSwitchHeaderAgent(event) {
+    const nextAgentId = event.currentTarget.value;
+    if (!nextAgentId || nextAgentId === normalizedRoutingAgentId) return;
+    const matchingAgent = availableAgents.find((agent) => agent.id === nextAgentId);
+    routingAgentId = nextAgentId;
+    routingAgentDisplayName = matchingAgent?.displayName || nextAgentId;
+    await saveSessionRouting();
+  }
+
   function generateChatTitle(input) {
     const trimmed = typeof input === 'string' ? input.trim() : '';
     return trimmed ? trimmed.slice(0, 72) : 'New chat';
@@ -1006,9 +1015,26 @@
         <div>
           <p class="eyebrow">Current chat</p>
           <h2>{selectedSession?.name ?? 'Chat'}</h2>
-          <span class="header-agent-pill" title={`Agent: ${selectedSession?.agentId || 'main'}`}>
-            Agent · {selectedSession?.agentDisplayName || selectedSession?.agentId || 'Primary'}
-          </span>
+          <div class="header-agent-row">
+            <span class="header-agent-pill" title={`Agent: ${selectedSession?.agentId || 'main'}`}>
+              Agent · {selectedSession?.agentDisplayName || selectedSession?.agentId || 'Primary'}
+            </span>
+            <select
+              class="header-agent-select"
+              value={normalizedRoutingAgentId}
+              on:change={quickSwitchHeaderAgent}
+              disabled={routingSaving || !availableAgents.length}
+              aria-label="Switch active agent"
+            >
+              {#if !availableAgents.length}
+                <option value={normalizedRoutingAgentId}>{selectedSession?.agentDisplayName || selectedSession?.agentId || 'Primary'}</option>
+              {:else}
+                {#each availableAgents as agent}
+                  <option value={agent.id}>{agent.displayName || agent.id}</option>
+                {/each}
+              {/if}
+            </select>
+          </div>
         </div>
         <div class="timeline-actions">
           <input

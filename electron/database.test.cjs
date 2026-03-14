@@ -174,6 +174,11 @@ test('setSessionAgent persists per-chat agent metadata and defaults display name
 
     assert.equal(hydrated.agentId, 'openai/gpt-5.3-codex');
     assert.equal(hydrated.agentDisplayName, 'openai/gpt-5.3-codex');
+
+    const systemNotes = db.getMessagesForSession('agent-chat')
+      .filter((message) => message.role === 'system');
+    assert.equal(systemNotes.length, 1);
+    assert.equal(systemNotes[0].content, 'Switched to openai/gpt-5.3-codex');
   } finally {
     cleanupDb(db, tmpRoot);
   }
@@ -206,6 +211,10 @@ test('setSessionAgent normalizes blank agent to main and keeps Primary display n
 
     assert.equal(hydrated.agentId, 'main');
     assert.equal(hydrated.agentDisplayName, 'Primary');
+
+    const systemNotes = db.getMessagesForSession('main-agent-chat')
+      .filter((message) => message.role === 'system');
+    assert.equal(systemNotes.length, 0);
   } finally {
     cleanupDb(db, tmpRoot);
   }

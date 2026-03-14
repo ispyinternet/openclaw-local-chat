@@ -202,6 +202,11 @@ class ChatDatabase {
   }
 
   setSessionAgent(sessionId, { agentId, agentDisplayName } = {}) {
+    const existing = this.getSessionRouting(sessionId);
+    if (!existing) {
+      throw new Error('Session not found');
+    }
+
     const normalizedAgentId = typeof agentId === 'string' && agentId.trim() ? agentId.trim() : 'main';
     const normalizedDisplayName = typeof agentDisplayName === 'string' && agentDisplayName.trim()
       ? agentDisplayName.trim()
@@ -214,8 +219,19 @@ class ChatDatabase {
       WHERE id = ?
     `).run(normalizedAgentId, normalizedDisplayName, sessionId);
 
-    if (!result.changes) {
-      throw new Error('Session not found');
+    if (result.changes && (
+      existing.agentId !== normalizedAgentId ||
+      existing.agentDisplayName !== normalizedDisplayName
+    )) {
+      this.db.prepare(`
+        INSERT INTO messages (session_id, message_key, role, author, content, display_timestamp, meta_pill, meta_detail)
+        VALUES (?, ?, 'system', 'System', ?, ?, 'info', 'routing updated')
+      `).run(
+        sessionId,
+        `system-agent-switch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        `Switched to ${normalizedDisplayName}`,
+        this.#formatDisplayTimestamp(new Date())
+      );
     }
 
     return this.getSessionRouting(sessionId);
