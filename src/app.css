@@ -186,8 +186,20 @@ button.primary:disabled {
   overflow: hidden;
 }
 
-.shell-grid.rail-collapsed {
+.shell-grid.side-rail-collapsed {
   grid-template-columns: 280px minmax(0, 1fr);
+}
+
+.shell-grid.chat-rail-collapsed {
+  grid-template-columns: minmax(0, 1fr) 360px;
+}
+
+.shell-grid.chat-rail-collapsed.side-rail-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.shell-grid.chat-rail-collapsed .chat-rail {
+  display: none;
 }
 
 .chat-rail {

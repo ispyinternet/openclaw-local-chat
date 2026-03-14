@@ -74,6 +74,7 @@
   let highlightTimeout;
   let draftPersistTimer;
   let showSettings = false;
+  let chatRailOpen = false;
   let sideRailOpen = false;
   let settingsSaving = false;
   let resettingData = false;
@@ -711,6 +712,12 @@
         return;
       }
 
+      if (event.shiftKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        chatRailOpen = !chatRailOpen;
+        return;
+      }
+
       if (event.shiftKey && event.key === '[') {
         event.preventDefault();
         selectAdjacentSession(-1);
@@ -960,7 +967,7 @@
     </div>
   </header>
 
-  <div class={`shell-grid ${sideRailOpen ? '' : 'rail-collapsed'}`}>
+  <div class={`shell-grid ${chatRailOpen ? '' : 'chat-rail-collapsed'} ${sideRailOpen ? '' : 'side-rail-collapsed'}`}>
     <aside class="chat-rail" aria-label="Chat list">
       {#each sections as section}
         <div class="chat-section">
@@ -1016,6 +1023,9 @@
           />
           <button class="ghost" on:click={focusSearchInput}>Jump ⌘K</button>
           <button class="ghost" on:click={focusComposerInput}>Compose ⌘⇧L</button>
+          <button class="ghost" on:click={() => (chatRailOpen = !chatRailOpen)}>
+            {chatRailOpen ? 'Hide chats' : 'Show chats'}
+          </button>
           <button class="ghost" on:click={() => (sideRailOpen = !sideRailOpen)}>
             {sideRailOpen ? 'Hide panel' : 'Show panel'}
           </button>
