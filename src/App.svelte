@@ -1005,23 +1005,17 @@
 
 <div class="app-frame">
   <header class="top-bar">
-    <div class="gateway">
-      <div>
-        <p class="eyebrow">Gateway</p>
-        <strong>{gateway.name}</strong>
-      </div>
-      <div class="gateway-meta">
-        <span class={`pill ${gatewayStatusPill.tone}`}>{gatewayStatusPill.label}</span>
-        <span class="meta">{gateway.endpoint}</span>
-        <span class="meta">Last heartbeat · {gateway.heartbeat}</span>
-      </div>
+    <div class="gateway-compact">
+      <span class="meta">Gateway</span>
+      <span class={`pill ${gatewayStatusPill.tone}`}>{gatewayStatusPill.label}</span>
+      <span class="meta">{gateway.heartbeat}</span>
     </div>
-    <div class="top-actions">
-      <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
-      <button class="ghost" on:click={openLogsFolder}>Open logs</button>
-      <button class="primary" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
-        {syncInFlight ? 'Syncing…' : 'Sync chats'}
+    <div class="top-actions compact">
+      <button class="ghost" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
+        {syncInFlight ? 'Syncing…' : 'Sync'}
       </button>
+      <button class="ghost" on:click={openLogsFolder}>Logs</button>
+      <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
     </div>
   </header>
 
