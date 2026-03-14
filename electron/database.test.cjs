@@ -178,3 +178,35 @@ test('setSessionAgent persists per-chat agent metadata and defaults display name
     cleanupDb(db, tmpRoot);
   }
 });
+
+test('setSessionAgent normalizes blank agent to main and keeps Primary display name', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('main-agent-chat', 'active', 'Main agent chat', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    const updated = db.setSessionAgent('main-agent-chat', {
+      agentId: '   ',
+      agentDisplayName: ' '
+    });
+
+    assert.equal(updated.agentId, 'main');
+    assert.equal(updated.agentDisplayName, 'Primary');
+
+    const hydrated = db.getSectionsWithSessions()
+      .flatMap((section) => section.sessions)
+      .find((session) => session.id === 'main-agent-chat');
+
+    assert.equal(hydrated.agentId, 'main');
+    assert.equal(hydrated.agentDisplayName, 'Primary');
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});

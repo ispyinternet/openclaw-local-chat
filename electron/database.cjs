@@ -205,7 +205,7 @@ class ChatDatabase {
     const normalizedAgentId = typeof agentId === 'string' && agentId.trim() ? agentId.trim() : 'main';
     const normalizedDisplayName = typeof agentDisplayName === 'string' && agentDisplayName.trim()
       ? agentDisplayName.trim()
-      : normalizedAgentId;
+      : (normalizedAgentId === 'main' ? 'Primary' : normalizedAgentId);
 
     const result = this.db.prepare(`
       UPDATE sessions
