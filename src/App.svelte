@@ -87,6 +87,7 @@
   let preferences = { gatewayUrl: 'http://localhost:4111', theme: 'system' };
   let syncInFlight = false;
   let lastSyncedAt = null;
+  let showGatewayDetails = false;
   let heartbeatTimer;
   let copyChatIdState = 'idle';
   let copyChatIdTimer;
@@ -1004,12 +1005,11 @@
 </script>
 
 <div class="app-frame">
-  <header class="top-bar">
-    <div class="gateway-compact">
-      <span class="meta">Gateway</span>
+  <header class="top-bar compact">
+    <button class="ghost gateway-toggle" on:click={() => (showGatewayDetails = !showGatewayDetails)}>
       <span class={`pill ${gatewayStatusPill.tone}`}>{gatewayStatusPill.label}</span>
-      <span class="meta">{gateway.heartbeat}</span>
-    </div>
+      <span class="meta">Gateway · {gateway.heartbeat}</span>
+    </button>
     <div class="top-actions compact">
       <button class="ghost" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
         {syncInFlight ? 'Syncing…' : 'Sync'}
@@ -1018,6 +1018,14 @@
       <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
     </div>
   </header>
+
+  {#if showGatewayDetails}
+    <section class="gateway-details" aria-label="Gateway details">
+      <strong>{gateway.name}</strong>
+      <span class="meta">{gateway.endpoint}</span>
+      <span class="meta">Last heartbeat · {gateway.heartbeat}</span>
+    </section>
+  {/if}
 
   <div class={`shell-grid ${chatRailOpen ? '' : 'chat-rail-collapsed'} ${sideRailOpen ? '' : 'side-rail-collapsed'}`}>
     <aside class="chat-rail" aria-label="Chat list">
