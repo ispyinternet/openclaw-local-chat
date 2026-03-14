@@ -991,6 +991,7 @@
             on:input={handleSearchInput}
           />
           <button class="ghost" on:click={focusSearchInput}>Jump ⌘K</button>
+          <button class="ghost" on:click={focusComposerInput}>Compose ⌘⇧L</button>
           <button class="ghost" on:click={() => (sideRailOpen = !sideRailOpen)}>
             {sideRailOpen ? 'Hide panel' : 'Show panel'}
           </button>
