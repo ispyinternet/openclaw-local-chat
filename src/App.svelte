@@ -74,8 +74,10 @@
   let highlightTimeout;
   let draftPersistTimer;
   let showSettings = false;
-  let chatRailOpen = false;
+  let chatRailOpen = true;
   let sideRailOpen = false;
+  let leftNav = 'chats';
+  let openChatMenuId = null;
   let settingsSaving = false;
   let resettingData = false;
   let sendingMessage = false;
@@ -94,6 +96,7 @@
 
   onMount(async () => {
     const removeKeydown = bindKeyboardShortcuts();
+    const removeOutsideClick = bindOutsideClick();
     await Promise.all([
       hydrateFromDatabase(),
       hydrateAppMeta(),
@@ -113,6 +116,7 @@
       if (draftPersistTimer) clearTimeout(draftPersistTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
       if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
+      removeOutsideClick?.();
       removeKeydown?.();
     };
   });
@@ -303,8 +307,7 @@
     await hydrateGatewaySessions();
   }
 
-  async function copyCurrentChatId() {
-    const chatId = selectedSession?.id;
+  async function copyCurrentChatId(chatId = selectedSession?.id) {
     if (!chatId) {
       copyChatIdState = 'error';
       if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
@@ -668,6 +671,52 @@
     return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
   }
 
+  function bindOutsideClick() {
+    if (typeof window === 'undefined') return null;
+    const onPointerDown = () => {
+      openChatMenuId = null;
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }
+
+  function createNewChat() {
+    const now = new Date();
+    const localId = `local-${now.getTime()}`;
+    const timestamp = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/London'
+    }).format(now);
+
+    const template = sections[0]?.sessions[0];
+    const nextChat = {
+      id: localId,
+      name: 'New chat',
+      preview: 'Start the conversation…',
+      channel: template?.channel || 'Desktop',
+      chip: template?.chip || 'local',
+      status: 'muted',
+      unread: 0,
+      lastMessageAt: timestamp,
+      agentId: template?.agentId || 'main',
+      agentDisplayName: template?.agentDisplayName || 'Primary'
+    };
+
+    sections = sections.map((section, index) => (
+      index === 0 ? { ...section, sessions: [nextChat, ...section.sessions] } : section
+    ));
+
+    openChatMenuId = null;
+    void selectSession(localId);
+  }
+
+  function toggleChatMenu(event, sessionId) {
+    event.stopPropagation();
+    openChatMenuId = openChatMenuId === sessionId ? null : sessionId;
+  }
+
   function bindKeyboardShortcuts() {
     if (typeof window === 'undefined') return null;
 
@@ -978,36 +1027,84 @@
 
   <div class={`shell-grid ${chatRailOpen ? '' : 'chat-rail-collapsed'} ${sideRailOpen ? '' : 'side-rail-collapsed'}`}>
     <aside class="chat-rail" aria-label="Chat list">
-      {#each sections as section}
-        <div class="chat-section">
-          <p class="section-label">{section.title}</p>
-          {#each section.sessions as session}
-            <button
-              class={`chat-tile ${session.id === selectedSessionId ? 'active' : ''}`}
-              on:click={() => selectSession(session.id)}
-            >
-              <div class="tile-main">
-                <div>
-                  <div class="name-row">
-                    <span class="name">{session.name}</span>
-                    {#if session.unread}
-                      <span class="badge">{session.unread}</span>
-                    {/if}
+      <div class="chat-rail-header">
+        <strong>OpenClaw Chat</strong>
+        <button class="ghost rail-collapse" on:click={() => (chatRailOpen = false)}>Hide</button>
+      </div>
+      <button class="primary new-chat" on:click={createNewChat}>New chat</button>
+
+      <div class="left-nav" role="tablist" aria-label="Primary navigation">
+        <button class={leftNav === 'chats' ? 'active' : ''} on:click={() => (leftNav = 'chats')}>Chats</button>
+        <button class={leftNav === 'agents' ? 'active' : ''} on:click={() => (leftNav = 'agents')}>Agents</button>
+      </div>
+
+      {#if leftNav === 'agents'}
+        <div class="agent-list">
+          {#if availableAgents.length}
+            {#each availableAgents as agent}
+              <div class="agent-row">
+                <strong>{agent.displayName || agent.id}</strong>
+                <span class="meta">{agent.id}</span>
+              </div>
+            {/each}
+          {:else}
+            <p class="meta">No agents loaded.</p>
+          {/if}
+        </div>
+      {:else}
+        <p class="section-label">Recent chats</p>
+        {#each sections as section}
+          <div class="chat-section">
+            {#each section.sessions as session}
+              <div
+                class={`chat-tile ${session.id === selectedSessionId ? 'active' : ''}`}
+                role="button"
+                tabindex="0"
+                on:click={() => selectSession(session.id)}
+                on:keydown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    selectSession(session.id);
+                  }
+                }}
+              >
+                <div class="tile-main">
+                  <div>
+                    <div class="name-row">
+                      <span class="name">{session.name}</span>
+                      {#if session.unread}
+                        <span class="badge">{session.unread}</span>
+                      {/if}
+                    </div>
+                    <p class="preview">{session.preview}</p>
+                    <p class="meta tile-time">{session.lastMessageAt || 'Unknown activity'}</p>
                   </div>
-                  <p class="preview">{session.preview}</p>
+                  <div class="tile-meta">
+                    <span class={`chip ${session.chip}`}>{session.channel}</span>
+                    <span class="agent-pill" title={`Agent: ${session.agentId || 'main'}`}>
+                      {session.agentDisplayName || session.agentId || 'Primary'}
+                    </span>
+                  </div>
                 </div>
-                <div class="tile-meta">
-                  <span class={`chip ${session.chip}`}>{session.channel}</span>
-                  <span class="agent-pill" title={`Agent: ${session.agentId || 'main'}`}>
-                    {session.agentDisplayName || session.agentId || 'Primary'}
-                  </span>
+                <div class="tile-actions">
+                  <button class="ghost overflow" aria-label="Chat actions" on:click={(event) => toggleChatMenu(event, session.id)}>⋯</button>
+                  {#if openChatMenuId === session.id}
+                    <div class="chat-menu" role="menu" tabindex="-1" aria-label="Chat actions" on:pointerdown|stopPropagation>
+                      <button class="ghost" on:click={() => { copyCurrentChatId(session.id); openChatMenuId = null; }}>Copy chat ID</button>
+                      <button class="ghost" on:click={() => { openChatMenuId = null; }}>Mute chat</button>
+                    </div>
+                  {/if}
+                  <span class={`status-dot ${session.status}`}></span>
                 </div>
               </div>
-              <span class={`status-dot ${session.status}`}></span>
-            </button>
-          {/each}
-        </div>
-      {/each}
+            {/each}
+          </div>
+        {/each}
+      {/if}
+
+      <footer class="chat-rail-footer">
+        <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
+      </footer>
     </aside>
 
     <section class="timeline-area" aria-label="Conversation timeline">
