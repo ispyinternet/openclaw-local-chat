@@ -101,3 +101,121 @@ test('searchMessages still returns matches for regular terms', (t) => {
     cleanupDb(db, tmpRoot);
   }
 });
+
+test('addMessage auto-titles untitled chats from first user message and truncates to 72 chars', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('untitled-chat', 'active', 'New chat', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    const content = `   ${'A'.repeat(90)}   `;
+    db.addMessage({ sessionId: 'untitled-chat', content, role: 'user', author: 'Operator' });
+
+    const session = db.db.prepare('SELECT name FROM sessions WHERE id = ?').get('untitled-chat');
+    assert.equal(session.name, 'A'.repeat(72));
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});
+
+test('addMessage keeps existing chat title stable after initial generation', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('stable-title-chat', 'active', '', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    db.addMessage({ sessionId: 'stable-title-chat', content: '   First user message title   ', role: 'user', author: 'Operator' });
+    db.addMessage({ sessionId: 'stable-title-chat', content: 'Second message should not retitle', role: 'user', author: 'Operator' });
+
+    const session = db.db.prepare('SELECT name FROM sessions WHERE id = ?').get('stable-title-chat');
+    assert.equal(session.name, 'First user message title');
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});
+
+test('setSessionAgent persists per-chat agent metadata and defaults display name', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('agent-chat', 'active', 'Agent chat', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    const updated = db.setSessionAgent('agent-chat', {
+      agentId: 'openai/gpt-5.3-codex'
+    });
+
+    assert.equal(updated.agentId, 'openai/gpt-5.3-codex');
+    assert.equal(updated.agentDisplayName, 'openai/gpt-5.3-codex');
+
+    const hydrated = db.getSectionsWithSessions()
+      .flatMap((section) => section.sessions)
+      .find((session) => session.id === 'agent-chat');
+
+    assert.equal(hydrated.agentId, 'openai/gpt-5.3-codex');
+    assert.equal(hydrated.agentDisplayName, 'openai/gpt-5.3-codex');
+
+    const systemNotes = db.getMessagesForSession('agent-chat')
+      .filter((message) => message.role === 'system');
+    assert.equal(systemNotes.length, 1);
+    assert.equal(systemNotes[0].content, 'Switched to openai/gpt-5.3-codex');
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});
+
+test('setSessionAgent normalizes blank agent to main and keeps Primary display name', (t) => {
+  const { db, tmpRoot, error } = createDb();
+  if (error) {
+    t.skip(`better-sqlite3 unavailable in node test runtime: ${error.message}`);
+    return;
+  }
+
+  try {
+    db.db.prepare(`
+      INSERT INTO sessions (id, group_id, name, channel, preview, unread, chip, status)
+      VALUES ('main-agent-chat', 'active', 'Main agent chat', 'Local', '', 0, 'dm', 'live')
+    `).run();
+
+    const updated = db.setSessionAgent('main-agent-chat', {
+      agentId: '   ',
+      agentDisplayName: ' '
+    });
+
+    assert.equal(updated.agentId, 'main');
+    assert.equal(updated.agentDisplayName, 'Primary');
+
+    const hydrated = db.getSectionsWithSessions()
+      .flatMap((section) => section.sessions)
+      .find((session) => session.id === 'main-agent-chat');
+
+    assert.equal(hydrated.agentId, 'main');
+    assert.equal(hydrated.agentDisplayName, 'Primary');
+
+    const systemNotes = db.getMessagesForSession('main-agent-chat')
+      .filter((message) => message.role === 'system');
+    assert.equal(systemNotes.length, 0);
+  } finally {
+    cleanupDb(db, tmpRoot);
+  }
+});

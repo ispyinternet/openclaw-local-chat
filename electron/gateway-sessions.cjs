@@ -1,32 +1,85 @@
+function stripAnsi(text) {
+  return String(text || '')
+    .replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(/\u001B\][^\u0007]*(?:\u0007|\u001B\\)/g, '')
+    .replace(/^\uFEFF/, '')
+    .replace(/[\u200B-\u200D\u2060]/g, '');
+}
+
+function extractBalancedJson(text, startIndex) {
+  if (startIndex < 0 || startIndex >= text.length) return null;
+
+  const opening = text[startIndex];
+  const closing = opening === '{' ? '}' : opening === '[' ? ']' : null;
+  if (!closing) return null;
+
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaping) {
+        escaping = false;
+      } else if (char === '\\') {
+        escaping = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === opening) {
+      depth += 1;
+      continue;
+    }
+
+    if (char === closing) {
+      depth -= 1;
+      if (depth === 0) {
+        return text.slice(startIndex, index + 1);
+      }
+    }
+  }
+
+  return null;
+}
+
 function extractInlineJson(line) {
   const firstBrace = line.indexOf('{');
   const firstBracket = line.indexOf('[');
 
-  const starts = [
-    { index: firstBrace, open: '{', close: '}' },
-    { index: firstBracket, open: '[', close: ']' },
-  ].filter((entry) => entry.index !== -1)
-    .sort((a, b) => a.index - b.index);
+  const starts = [firstBrace, firstBracket]
+    .filter((index) => index !== -1)
+    .sort((a, b) => a - b);
 
-  const start = starts[0];
-  if (!start) return null;
+  for (const startIndex of starts) {
+    const candidate = extractBalancedJson(line, startIndex);
+    if (candidate) {
+      return candidate;
+    }
+  }
 
-  const end = line.lastIndexOf(start.close);
-  if (end === -1 || end <= start.index) return null;
-
-  return line.slice(start.index, end + 1);
+  return null;
 }
 
 function collectJsonCandidates(raw) {
   const candidates = [];
-  const text = String(raw);
+  const text = stripAnsi(raw);
   const lines = text
     .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
+    .map((line) => line.trim());
+  const nonEmptyLines = lines.filter(Boolean);
 
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
+  for (let index = nonEmptyLines.length - 1; index >= 0; index -= 1) {
+    const line = nonEmptyLines[index];
     candidates.push(line);
 
     const dataPrefix = line.match(/^data:\s*(.+)$/i);
@@ -40,6 +93,23 @@ function collectJsonCandidates(raw) {
     }
   }
 
+  const combinedDataLines = [];
+  for (const line of lines) {
+    const dataPrefix = line.match(/^data:\s?(.*)$/i);
+    if (dataPrefix) {
+      combinedDataLines.push(dataPrefix[1]);
+      continue;
+    }
+
+    if (combinedDataLines.length > 0) {
+      candidates.push(combinedDataLines.join('\n').trim());
+      combinedDataLines.length = 0;
+    }
+  }
+  if (combinedDataLines.length > 0) {
+    candidates.push(combinedDataLines.join('\n').trim());
+  }
+
   const fencedBlocks = [...text.matchAll(/```(?:json)?\s*([\s\S]*?)```/gi)];
   for (let index = 0; index < fencedBlocks.length; index += 1) {
     const candidate = fencedBlocks[index]?.[1]?.trim();
@@ -48,7 +118,12 @@ function collectJsonCandidates(raw) {
     }
   }
 
-  return candidates;
+  const seen = new Set();
+  return candidates.filter((candidate) => {
+    if (!candidate || seen.has(candidate)) return false;
+    seen.add(candidate);
+    return true;
+  });
 }
 
 function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
@@ -56,6 +131,19 @@ function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
 
   if (Array.isArray(raw)) {
     return raw;
+  }
+
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (/^[\[{\"]/.test(trimmed)) {
+      try {
+        return normalizeGatewaySessionsPayload(JSON.parse(trimmed), seen);
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
   }
 
   if (typeof raw !== 'object') {
@@ -100,13 +188,13 @@ function normalizeGatewaySessionsPayload(raw, seen = new Set()) {
 }
 
 function parseJsonCandidate(candidate) {
-  let parsed = JSON.parse(candidate);
+  let parsed = JSON.parse(stripAnsi(candidate).trim());
 
-  for (let depth = 0; depth < 2; depth += 1) {
+  for (let depth = 0; depth < 5; depth += 1) {
     if (typeof parsed !== 'string') break;
 
     const trimmed = parsed.trim();
-    if (!trimmed || !/^[\[{]/.test(trimmed)) break;
+    if (!trimmed || !/^[\[{\"]/.test(trimmed)) break;
 
     parsed = JSON.parse(trimmed);
   }
@@ -115,7 +203,7 @@ function parseJsonCandidate(candidate) {
 }
 
 function parseGatewaySessionsOutput(stdout) {
-  const raw = String(stdout || '').trim();
+  const raw = stripAnsi(stdout).trim();
   if (!raw) return [];
 
   try {

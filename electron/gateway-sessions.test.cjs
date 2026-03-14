@@ -32,6 +32,17 @@ test('normalizeGatewaySessionsPayload handles nested payload/data/items wrappers
   assert.deepEqual(normalizeGatewaySessionsPayload({ payload: { data: { items: sessions } } }), sessions);
 });
 
+test('normalizeGatewaySessionsPayload handles json-string data wrappers', () => {
+  const sessions = [{ sessionId: 'e3' }];
+  assert.deepEqual(normalizeGatewaySessionsPayload({ data: JSON.stringify({ sessions }) }), sessions);
+});
+
+test('normalizeGatewaySessionsPayload handles deeply encoded nested wrappers', () => {
+  const sessions = [{ sessionId: 'e4' }];
+  const encoded = JSON.stringify(JSON.stringify({ sessions }));
+  assert.deepEqual(normalizeGatewaySessionsPayload({ result: encoded }), sessions);
+});
+
 test('normalizeGatewaySessionsPayload safely handles cyclic objects', () => {
   const payload = {};
   payload.self = payload;
@@ -56,6 +67,24 @@ test('parseGatewaySessionsOutput extracts inline json from log output', () => {
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput strips ANSI color sequences around payload', () => {
+  const sessions = [{ sessionId: 'g-ansi' }];
+  const stdout = `\u001b[32mresult:\u001b[0m ${JSON.stringify({ sessions })}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput strips UTF-8 BOM from payload output', () => {
+  const sessions = [{ sessionId: 'g-bom' }];
+  const stdout = `\uFEFF${JSON.stringify({ sessions })}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput strips zero-width chars from data: line', () => {
+  const sessions = [{ sessionId: 'g-zwsp' }];
+  const stdout = `\u200Bdata:\u2060 ${JSON.stringify({ sessions })}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
 test('parseGatewaySessionsOutput extracts fenced json payload', () => {
   const sessions = [{ sessionId: 'h' }];
   const stdout = ['logs', '', '```json', JSON.stringify({ sessions }), '```'].join('\n');
@@ -74,10 +103,47 @@ test('parseGatewaySessionsOutput extracts inline JSON array from log output', ()
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 
+test('parseGatewaySessionsOutput extracts balanced inline JSON when trailing text contains brackets', () => {
+  const sessions = [{ sessionId: 'i2b' }];
+  const stdout = `trace: payload=${JSON.stringify({ sessions })} trailing [debug] marker`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput handles inline JSON with escaped quotes and braces in strings', () => {
+  const sessions = [{ sessionId: 'i2c', note: 'literal } and ] and \\"quotes\\"' }];
+  const stdout = `trace: payload ${JSON.stringify({ sessions })} done`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
 test('parseGatewaySessionsOutput extracts data: prefixed JSON array line', () => {
   const sessions = [{ sessionId: 'i3' }];
   const stdout = ['event: snapshot', `data: ${JSON.stringify(sessions)}`].join('\n');
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput joins multiline data: payload into valid JSON', () => {
+  const sessions = [{ sessionId: 'i3b' }];
+  const stdout = [
+    'event: message',
+    'data: {"sessions":',
+    `data: ${JSON.stringify(sessions)}}`,
+  ].join('\n');
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput keeps multiline data events separated by blank lines', () => {
+  const older = [{ sessionId: 'i3c-old' }];
+  const latest = [{ sessionId: 'i3c-new' }];
+  const stdout = [
+    'event: message',
+    'data: {"sessions":',
+    `data: ${JSON.stringify(older)}}`,
+    '',
+    'event: message',
+    'data: {"sessions":',
+    `data: ${JSON.stringify(latest)}}`,
+  ].join('\n');
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), latest);
 });
 
 test('parseGatewaySessionsOutput prefers latest fenced json payload', () => {
@@ -104,6 +170,19 @@ test('parseGatewaySessionsOutput unwraps json-encoded string payload', () => {
 test('parseGatewaySessionsOutput unwraps data: prefixed json-encoded array payload', () => {
   const sessions = [{ sessionId: 'wrapped-array' }];
   const stdout = `data: ${JSON.stringify(JSON.stringify(sessions))}`;
+  assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
+});
+
+test('parseGatewaySessionsOutput unwraps deeply json-encoded payloads', () => {
+  const sessions = [{ sessionId: 'wrapped-deep' }];
+  const encoded = JSON.stringify(JSON.stringify(JSON.stringify({ sessions })));
+  assert.deepEqual(parseGatewaySessionsOutput(encoded), sessions);
+});
+
+test('parseGatewaySessionsOutput unwraps deeply encoded data: payloads', () => {
+  const sessions = [{ sessionId: 'wrapped-deep-data' }];
+  const encoded = JSON.stringify(JSON.stringify(JSON.stringify({ sessions })));
+  const stdout = `data: ${encoded}`;
   assert.deepEqual(parseGatewaySessionsOutput(stdout), sessions);
 });
 

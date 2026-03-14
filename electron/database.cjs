@@ -37,6 +37,8 @@ class ChatDatabase {
         unread INTEGER NOT NULL DEFAULT 0,
         chip TEXT NOT NULL,
         status TEXT NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT 'main',
+        agent_display_name TEXT NOT NULL DEFAULT 'Primary',
         created_at INTEGER NOT NULL DEFAULT (strftime('%s','now')),
         FOREIGN KEY(group_id) REFERENCES sections(id) ON DELETE CASCADE
       );
@@ -89,6 +91,22 @@ class ChatDatabase {
         WHERE rowid = new.id;
       END;
     `);
+
+    this.#ensureSessionAgentColumns();
+  }
+
+  #ensureSessionAgentColumns() {
+    const columns = this.db.prepare("PRAGMA table_info('sessions')").all();
+    const hasAgentId = columns.some((column) => column.name === 'agent_id');
+    const hasAgentDisplayName = columns.some((column) => column.name === 'agent_display_name');
+
+    if (!hasAgentId) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN agent_id TEXT NOT NULL DEFAULT 'main'");
+    }
+
+    if (!hasAgentDisplayName) {
+      this.db.exec("ALTER TABLE sessions ADD COLUMN agent_display_name TEXT NOT NULL DEFAULT 'Primary'");
+    }
   }
 
   #seedIfNeeded() {
@@ -130,7 +148,16 @@ class ChatDatabase {
       .all();
     const sessions = this.db
       .prepare(`
-        SELECT id, group_id as groupId, name, channel, preview, unread, chip, status
+        SELECT id,
+               group_id as groupId,
+               name,
+               channel,
+               preview,
+               unread,
+               chip,
+               status,
+               COALESCE(NULLIF(trim(agent_id), ''), 'main') as agentId,
+               COALESCE(NULLIF(trim(agent_display_name), ''), 'Primary') as agentDisplayName
         FROM sessions
         ORDER BY created_at DESC
       `)
@@ -151,6 +178,63 @@ class ChatDatabase {
     const messages = selectedSessionId ? this.getMessagesForSession(selectedSessionId) : [];
 
     return { sections, selectedSessionId, messages };
+  }
+
+  getSessionRouting(sessionId) {
+    if (!sessionId) return null;
+
+    const row = this.db.prepare(`
+      SELECT id,
+             group_id as groupId,
+             COALESCE(NULLIF(trim(agent_id), ''), 'main') as agentId,
+             COALESCE(NULLIF(trim(agent_display_name), ''), 'Primary') as agentDisplayName
+      FROM sessions
+      WHERE id = ?
+    `).get(sessionId);
+
+    if (!row) return null;
+    return {
+      id: row.id,
+      groupId: row.groupId,
+      agentId: row.agentId,
+      agentDisplayName: row.agentDisplayName
+    };
+  }
+
+  setSessionAgent(sessionId, { agentId, agentDisplayName } = {}) {
+    const existing = this.getSessionRouting(sessionId);
+    if (!existing) {
+      throw new Error('Session not found');
+    }
+
+    const normalizedAgentId = typeof agentId === 'string' && agentId.trim() ? agentId.trim() : 'main';
+    const normalizedDisplayName = typeof agentDisplayName === 'string' && agentDisplayName.trim()
+      ? agentDisplayName.trim()
+      : (normalizedAgentId === 'main' ? 'Primary' : normalizedAgentId);
+
+    const result = this.db.prepare(`
+      UPDATE sessions
+      SET agent_id = ?,
+          agent_display_name = ?
+      WHERE id = ?
+    `).run(normalizedAgentId, normalizedDisplayName, sessionId);
+
+    if (result.changes && (
+      existing.agentId !== normalizedAgentId ||
+      existing.agentDisplayName !== normalizedDisplayName
+    )) {
+      this.db.prepare(`
+        INSERT INTO messages (session_id, message_key, role, author, content, display_timestamp, meta_pill, meta_detail)
+        VALUES (?, ?, 'system', 'System', ?, ?, 'info', 'routing updated')
+      `).run(
+        sessionId,
+        `system-agent-switch-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        `Switched to ${normalizedDisplayName}`,
+        this.#formatDisplayTimestamp(new Date())
+      );
+    }
+
+    return this.getSessionRouting(sessionId);
   }
 
   upsertGatewaySessions(rawSessions = []) {
@@ -232,13 +316,14 @@ class ChatDatabase {
       throw new Error('sessionId and content are required');
     }
 
-    const session = this.db.prepare('SELECT id FROM sessions WHERE id = ?').get(sessionId);
+    const session = this.db.prepare('SELECT id, name FROM sessions WHERE id = ?').get(sessionId);
     if (!session) {
       throw new Error('Session not found');
     }
 
     const messageKey = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const timestamp = this.#formatDisplayTimestamp(new Date());
+    const generatedTitle = this.#generateChatTitle(trimmed);
 
     const result = this.db
       .prepare(`
@@ -250,10 +335,16 @@ class ChatDatabase {
     this.db
       .prepare(`
         UPDATE sessions
-        SET preview = ?, created_at = strftime('%s','now')
+        SET preview = ?,
+            created_at = strftime('%s','now'),
+            name = CASE
+              WHEN trim(COALESCE(name, '')) = '' OR lower(trim(name)) = 'new chat'
+                THEN ?
+              ELSE name
+            END
         WHERE id = ?
       `)
-      .run(trimmed.slice(0, 160), sessionId);
+      .run(trimmed.slice(0, 160), generatedTitle, sessionId);
 
     const row = this.db
       .prepare(`
@@ -439,6 +530,15 @@ class ChatDatabase {
       hour12: false,
       timeZone: 'Europe/London'
     }).format(date);
+  }
+
+  #generateChatTitle(input) {
+    const trimmed = typeof input === 'string' ? input.trim() : '';
+    if (!trimmed) {
+      return 'New chat';
+    }
+
+    return trimmed.slice(0, 72);
   }
 
   #buildFtsQuery(input) {

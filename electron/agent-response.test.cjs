@@ -10,6 +10,7 @@ test('extracts nested reply.message payload', () => {
 test('falls back through supported top-level keys', () => {
   assert.equal(extractAgentText(JSON.stringify({ message: 'm' })), 'm');
   assert.equal(extractAgentText(JSON.stringify({ text: 't' })), 't');
+  assert.equal(extractAgentText(JSON.stringify({ output_text: 'ot' })), 'ot');
   assert.equal(extractAgentText(JSON.stringify({ output: 'o' })), 'o');
   assert.equal(extractAgentText(JSON.stringify({ response: 'r' })), 'r');
 });
@@ -43,6 +44,19 @@ test('extracts text from object and block payloads', () => {
       })
     ),
     'first line\nsecond line'
+  );
+  assert.equal(
+    extractAgentText(
+      JSON.stringify({
+        result: {
+          payloads: [
+            { type: 'output_text', output_text: 'first output block' },
+            { type: 'output_text', output_text: 'second output block' }
+          ]
+        }
+      })
+    ),
+    'first output block\nsecond output block'
   );
 });
 

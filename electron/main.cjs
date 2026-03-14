@@ -5,7 +5,9 @@ const { promisify } = require('node:util');
 const { createDatabase } = require('./database.cjs');
 const { extractAgentText } = require('./agent-response.cjs');
 const { parseGatewaySessionsOutput } = require('./gateway-sessions.cjs');
+const { parseAgentsListOutput } = require('./agents-list.cjs');
 const { summarizeExecError } = require('./cli-error.cjs');
+const { buildAgentCommandArgs } = require('./send-routing.cjs');
 
 const execFileAsync = promisify(execFile);
 
@@ -76,6 +78,13 @@ ipcMain.handle('data:set-composer-drafts', (_event, drafts) => {
   return database.setComposerDrafts(drafts);
 });
 
+ipcMain.handle('data:set-session-agent', (_event, payload) => {
+  return database.setSessionAgent(payload?.sessionId, {
+    agentId: payload?.agentId,
+    agentDisplayName: payload?.agentDisplayName
+  });
+});
+
 ipcMain.handle('settings:get', () => {
   return database.getPreferences();
 });
@@ -99,15 +108,26 @@ ipcMain.handle('data:sync-gateway-sessions', async () => {
   }
 });
 
+ipcMain.handle('data:list-agents', async () => {
+  try {
+    const { stdout } = await execFileAsync('openclaw', ['agents', 'list', '--json'], { maxBuffer: 2 * 1024 * 1024 });
+    return parseAgentsListOutput(stdout);
+  } catch (error) {
+    const reason = summarizeExecError(error, 'Unable to list agents');
+    throw new Error(`Unable to list agents: ${reason}`);
+  }
+});
+
 ipcMain.handle('data:send-message', async (_event, payload) => {
   const userMessage = database.addMessage(payload);
-
-  const looksLikeGatewaySession = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(payload?.sessionId || '');
+  const routing = database.getSessionRouting(payload?.sessionId);
 
   try {
-    const args = looksLikeGatewaySession
-      ? ['agent', '--session-id', payload.sessionId, '--message', payload.content, '--json']
-      : ['agent', '--agent', 'main', '--message', payload.content, '--json'];
+    const args = buildAgentCommandArgs({
+      sessionId: payload?.sessionId,
+      content: payload?.content,
+      agentId: routing?.agentId
+    });
 
     const { stdout } = await execFileAsync(
       'openclaw',

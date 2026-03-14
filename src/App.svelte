@@ -10,13 +10,11 @@
     mode: 'Live'
   };
 
-  const contextItems = [
-    { label: 'Channel', value: 'Slack DM' },
-    { label: 'Chat ID', value: 'sess_23ff901' },
-    { label: 'Routing', value: 'Primary agent · tools:on' },
-    { label: 'Safety', value: 'Live · elevated' },
-    { label: 'Last activity', value: '13:05 GMT' }
-  ];
+  let routingAgentId = 'main';
+  let routingAgentDisplayName = 'Primary';
+  let routingSaving = false;
+  let availableAgents = [];
+  let agentsLoading = false;
 
   const runs = [
     {
@@ -60,6 +58,7 @@
   let sections = buildSectionsFromSeed();
   let selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
   let messages = buildMessagesFromSeed(selectedSessionId);
+  maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
   let selectedSession = findSession(selectedSessionId);
   let activeRightTab = 'context';
   let composerValue = '';
@@ -75,23 +74,37 @@
   let highlightTimeout;
   let draftPersistTimer;
   let showSettings = false;
-  let sideRailOpen = true;
+  let chatRailOpen = true;
+  let sideRailOpen = false;
+  let leftNav = 'chats';
+  let openChatMenuId = null;
   let settingsSaving = false;
   let resettingData = false;
   let sendingMessage = false;
   let searchInputEl;
+  let composerInputEl;
   let appMeta = { version: '0.0.0', platform: 'unknown' };
   let preferences = { gatewayUrl: 'http://localhost:4111', theme: 'system' };
   let syncInFlight = false;
   let lastSyncedAt = null;
+  let showGatewayDetails = false;
   let heartbeatTimer;
+  let copyChatIdState = 'idle';
+  let copyChatIdTimer;
 
   const chatDesktop = typeof window !== 'undefined' ? window.chatDesktop : undefined;
   const dataClient = chatDesktop?.data;
 
   onMount(async () => {
     const removeKeydown = bindKeyboardShortcuts();
-    await Promise.all([hydrateFromDatabase(), hydrateAppMeta(), hydratePreferences(), hydrateComposerDrafts()]);
+    const removeOutsideClick = bindOutsideClick();
+    await Promise.all([
+      hydrateFromDatabase(),
+      hydrateAppMeta(),
+      hydratePreferences(),
+      hydrateComposerDrafts(),
+      hydrateAvailableAgents()
+    ]);
     await hydrateGatewaySessions({ silentError: true });
     heartbeatTimer = setInterval(() => {
       refreshHeartbeatLabel();
@@ -103,6 +116,8 @@
       if (highlightTimeout) clearTimeout(highlightTimeout);
       if (draftPersistTimer) clearTimeout(draftPersistTimer);
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
+      removeOutsideClick?.();
       removeKeydown?.();
     };
   });
@@ -120,6 +135,9 @@
       messages = payload.messages?.length ? payload.messages : buildMessagesFromSeed(selectedSessionId);
       selectedSession = findSession(selectedSessionId);
       restoreDraftForSession(selectedSessionId);
+      maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     } catch (error) {
       console.error('Failed to read persisted conversations', error);
       errorMessage = 'Unable to open the stored SQLite cache. Showing demo data instead.';
@@ -127,6 +145,9 @@
       selectedSessionId = sections[0]?.sessions[0]?.id ?? null;
       messages = buildMessagesFromSeed(selectedSessionId);
       restoreDraftForSession(selectedSessionId);
+      maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     } finally {
       loading = false;
     }
@@ -169,6 +190,30 @@
     }
   }
 
+  async function hydrateAvailableAgents() {
+    agentsLoading = true;
+
+    if (!dataClient?.listAgents) {
+      availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
+      agentsLoading = false;
+      return;
+    }
+
+    try {
+      const rows = await dataClient.listAgents();
+      if (Array.isArray(rows) && rows.length) {
+        availableAgents = rows;
+      } else {
+        availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
+      }
+    } catch (error) {
+      console.error('Unable to load agents list', error);
+      availableAgents = [{ id: 'main', displayName: 'Primary', model: '' }];
+    } finally {
+      agentsLoading = false;
+    }
+  }
+
   async function hydrateGatewaySessions({ silentError = false } = {}) {
     if (!dataClient?.syncGatewaySessions || syncInFlight) return;
 
@@ -192,6 +237,9 @@
         if (selectedSessionId) {
           const client = dataClient ?? fallbackAdapter;
           messages = await client.getMessages(selectedSessionId);
+          maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
+          await tick();
+          scrollToLatestMessage();
         } else {
           messages = [];
         }
@@ -207,7 +255,7 @@
       console.error('Unable to sync gateway sessions', error);
       gateway = { ...gateway, status: 'offline' };
       if (!silentError) {
-        errorMessage = error?.message || 'Unable to sync gateway sessions.';
+        errorMessage = error?.message || 'Unable to sync gateway chats.';
       }
     } finally {
       syncInFlight = false;
@@ -227,7 +275,23 @@
     }
 
     const minutes = Math.floor(seconds / 60);
-    gateway = { ...gateway, heartbeat: `${minutes}m ago` };
+    if (minutes < 60) {
+      gateway = { ...gateway, heartbeat: `${minutes}m ago` };
+      return;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      const remainderMinutes = minutes % 60;
+      gateway = {
+        ...gateway,
+        heartbeat: remainderMinutes ? `${hours}h ${remainderMinutes}m ago` : `${hours}h ago`
+      };
+      return;
+    }
+
+    const days = Math.floor(hours / 24);
+    gateway = { ...gateway, heartbeat: days === 1 ? '1 day ago' : `${days} days ago` };
   }
 
   async function openLogsFolder() {
@@ -242,6 +306,47 @@
 
   async function retryGatewaySync() {
     await hydrateGatewaySessions();
+  }
+
+  async function copyCurrentChatId(chatId = selectedSession?.id) {
+    if (!chatId) {
+      copyChatIdState = 'error';
+      if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
+      copyChatIdTimer = setTimeout(() => {
+        copyChatIdState = 'idle';
+      }, 2000);
+      return;
+    }
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(chatId);
+      } else {
+        const scratch = document.createElement('textarea');
+        scratch.value = chatId;
+        scratch.setAttribute('readonly', 'true');
+        scratch.style.position = 'fixed';
+        scratch.style.opacity = '0';
+        document.body.appendChild(scratch);
+        scratch.select();
+        scratch.setSelectionRange(0, scratch.value.length);
+        const copied = document.execCommand('copy');
+        document.body.removeChild(scratch);
+        if (!copied) {
+          throw new Error('execCommand copy returned false');
+        }
+      }
+
+      copyChatIdState = 'copied';
+    } catch (error) {
+      console.error('Unable to copy chat id', error);
+      copyChatIdState = 'error';
+    }
+
+    if (copyChatIdTimer) clearTimeout(copyChatIdTimer);
+    copyChatIdTimer = setTimeout(() => {
+      copyChatIdState = 'idle';
+    }, 2000);
   }
 
   function applyTheme(theme) {
@@ -280,6 +385,7 @@
       sessionDrafts = {};
       queuePersistDrafts();
       restoreDraftForSession(selectedSessionId);
+      maybeHydrateChatTitleFromMessages(selectedSessionId, messages);
       errorMessage = '';
       searchQuery = '';
       searchResults = [];
@@ -300,19 +406,102 @@
     persistDraftForSession(selectedSessionId, composerValue);
     selectedSessionId = sessionId;
     selectedSession = findSession(sessionId);
+    copyChatIdState = 'idle';
+    syncRoutingDraftFromSession(selectedSession);
     try {
       const client = dataClient ?? fallbackAdapter;
       messages = await client.getMessages(sessionId);
+      maybeHydrateChatTitleFromMessages(sessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     } catch (error) {
       console.error('Failed to load messages', error);
       errorMessage = 'Unable to load messages for that chat. Showing offline data if available.';
       messages = buildMessagesFromSeed(sessionId);
+      maybeHydrateChatTitleFromMessages(sessionId, messages);
+      await tick();
+      scrollToLatestMessage();
     }
 
     searchQuery = '';
     searchResults = [];
     highlightedMessageId = null;
     restoreDraftForSession(sessionId);
+  }
+
+  function syncRoutingDraftFromSession(session) {
+    routingAgentId = session?.agentId || 'main';
+    routingAgentDisplayName = session?.agentDisplayName || 'Primary';
+  }
+
+  async function saveSessionRouting() {
+    if (!selectedSessionId || !dataClient?.setSessionAgent || routingSaving) return;
+
+    routingSaving = true;
+    errorMessage = '';
+
+    const matchingAgent = availableAgents.find((agent) => agent.id === normalizedRoutingAgentId);
+
+    try {
+      const updated = await dataClient.setSessionAgent({
+        sessionId: selectedSessionId,
+        agentId: normalizedRoutingAgentId,
+        agentDisplayName: normalizedRoutingDisplayName || matchingAgent?.displayName || normalizedRoutingAgentId
+      });
+
+      sections = sections.map((section) => ({
+        ...section,
+        sessions: section.sessions.map((session) => (
+          session.id === selectedSessionId
+            ? {
+              ...session,
+              agentId: updated?.agentId || normalizedRoutingAgentId,
+              agentDisplayName: updated?.agentDisplayName || normalizedRoutingDisplayName
+            }
+            : session
+        ))
+      }));
+    } catch (error) {
+      console.error('Unable to save chat routing', error);
+      errorMessage = 'Failed to save chat routing.';
+    } finally {
+      routingSaving = false;
+    }
+  }
+
+  async function quickSwitchHeaderAgent(event) {
+    const nextAgentId = event.currentTarget.value;
+    if (!nextAgentId || nextAgentId === normalizedRoutingAgentId) return;
+    const matchingAgent = availableAgents.find((agent) => agent.id === nextAgentId);
+    routingAgentId = nextAgentId;
+    routingAgentDisplayName = matchingAgent?.displayName || nextAgentId;
+    await saveSessionRouting();
+  }
+
+  function generateChatTitle(input) {
+    const trimmed = typeof input === 'string' ? input.trim() : '';
+    return trimmed ? trimmed.slice(0, 72) : 'New chat';
+  }
+
+  function isUntitledChat(name) {
+    const normalized = typeof name === 'string' ? name.trim().toLowerCase() : '';
+    return !normalized || normalized === 'new chat';
+  }
+
+  function updateSessionTitle(sessionId, messageContent) {
+    const generatedTitle = generateChatTitle(messageContent);
+    sections = sections.map((section) => {
+      const hasSession = section.sessions.some((session) => session.id === sessionId);
+      if (!hasSession) return section;
+
+      const nextSessions = section.sessions.map((session) => (
+        session.id === sessionId && isUntitledChat(session.name)
+          ? { ...session, name: generatedTitle }
+          : session
+      ));
+
+      return { ...section, sessions: nextSessions };
+    });
   }
 
   function updateSessionPreview(sessionId, preview) {
@@ -330,12 +519,47 @@
     });
   }
 
+  function deriveChatTitleFromMessages(messageList = []) {
+    if (!Array.isArray(messageList)) {
+      return null;
+    }
+
+    const firstUserMessage = messageList.find(
+      (message) =>
+        message &&
+        typeof message.content === 'string' &&
+        message.content.trim() &&
+        typeof message.role === 'string' &&
+        message.role.toLowerCase() === 'user'
+    );
+
+    return firstUserMessage ? generateChatTitle(firstUserMessage.content) : null;
+  }
+
+  function maybeHydrateChatTitleFromMessages(sessionId, messageList) {
+    if (!sessionId || !Array.isArray(messageList) || !messageList.length) {
+      return;
+    }
+
+    const session = findSession(sessionId);
+    if (!session || !isUntitledChat(session.name)) {
+      return;
+    }
+
+    const generatedTitle = deriveChatTitleFromMessages(messageList);
+    if (!generatedTitle) {
+      return;
+    }
+
+    updateSessionTitle(sessionId, generatedTitle);
+  }
+
   async function sendCurrentMessage() {
     const content = composerValue.trim();
     if (!selectedSessionId || !content || sendingMessage) return;
 
     if (isGatewaySessionId(selectedSessionId) && gateway.status === 'offline') {
-      errorMessage = 'Gateway is offline. Reconnect or sync sessions before sending.';
+      errorMessage = 'Gateway is offline. Reconnect or sync chats before sending.';
       return;
     }
 
@@ -356,6 +580,7 @@
       messages = incoming ? [...messages, outgoing, incoming] : [...messages, outgoing];
       composerValue = '';
       persistDraftForSession(selectedSessionId, '');
+      updateSessionTitle(selectedSessionId, content);
       updateSessionPreview(selectedSessionId, incoming?.content || content);
       await tick();
       highlightMessage((incoming || outgoing)?.id);
@@ -422,6 +647,13 @@
     searchInputEl.select();
   }
 
+  function focusComposerInput() {
+    if (!composerInputEl) return;
+    composerInputEl.focus();
+    const len = composerInputEl.value?.length ?? 0;
+    composerInputEl.setSelectionRange(len, len);
+  }
+
   function selectAdjacentSession(direction = 1) {
     const allSessions = sections.flatMap((section) => section.sessions);
     if (!allSessions.length) return;
@@ -435,10 +667,63 @@
     }
   }
 
+  function isEditableShortcutTarget(target) {
+    if (!target || typeof target.closest !== 'function') return false;
+    return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'));
+  }
+
+  function bindOutsideClick() {
+    if (typeof window === 'undefined') return null;
+    const onPointerDown = () => {
+      openChatMenuId = null;
+    };
+    window.addEventListener('pointerdown', onPointerDown);
+    return () => window.removeEventListener('pointerdown', onPointerDown);
+  }
+
+  function createNewChat() {
+    const now = new Date();
+    const localId = `local-${now.getTime()}`;
+    const timestamp = new Intl.DateTimeFormat('en-GB', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Europe/London'
+    }).format(now);
+
+    const template = sections[0]?.sessions[0];
+    const nextChat = {
+      id: localId,
+      name: 'New chat',
+      preview: 'Start the conversation…',
+      channel: template?.channel || 'Desktop',
+      chip: template?.chip || 'local',
+      status: 'muted',
+      unread: 0,
+      lastMessageAt: timestamp,
+      agentId: template?.agentId || 'main',
+      agentDisplayName: template?.agentDisplayName || 'Primary'
+    };
+
+    sections = sections.map((section, index) => (
+      index === 0 ? { ...section, sessions: [nextChat, ...section.sessions] } : section
+    ));
+
+    openChatMenuId = null;
+    void selectSession(localId);
+  }
+
+  function toggleChatMenu(event, sessionId) {
+    event.stopPropagation();
+    openChatMenuId = openChatMenuId === sessionId ? null : sessionId;
+  }
+
   function bindKeyboardShortcuts() {
     if (typeof window === 'undefined') return null;
 
     const onKeydown = (event) => {
+      const isEditableTarget = isEditableShortcutTarget(event.target);
+
       if (event.key === 'Escape') {
         if (showSettings) {
           event.preventDefault();
@@ -446,7 +731,7 @@
           return;
         }
 
-        if (sideRailOpen) {
+        if (!isEditableTarget && sideRailOpen) {
           event.preventDefault();
           sideRailOpen = false;
         }
@@ -454,7 +739,7 @@
       }
 
       const hasPrimaryModifier = event.metaKey || event.ctrlKey;
-      if (!hasPrimaryModifier) return;
+      if (!hasPrimaryModifier || isEditableTarget) return;
 
       if (event.key.toLowerCase() === 'k') {
         event.preventDefault();
@@ -465,6 +750,30 @@
       if (event.key.toLowerCase() === 'f') {
         event.preventDefault();
         focusSearchInput();
+        return;
+      }
+
+      if (event.key === ',') {
+        event.preventDefault();
+        showSettings = true;
+        return;
+      }
+
+      if (event.shiftKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        void hydrateGatewaySessions();
+        return;
+      }
+
+      if (event.shiftKey && event.key.toLowerCase() === 'l') {
+        event.preventDefault();
+        focusComposerInput();
+        return;
+      }
+
+      if (event.shiftKey && event.key.toLowerCase() === 'b') {
+        event.preventDefault();
+        chatRailOpen = !chatRailOpen;
         return;
       }
 
@@ -563,7 +872,7 @@
           return {
             id: message.id,
             sessionId: message.sessionId,
-            sessionName: session?.name ?? 'Session',
+            sessionName: session?.name ?? 'Chat',
             sessionChannel: session?.channel ?? 'Channel',
             author: message.author,
             role: message.role,
@@ -603,6 +912,13 @@
     searchDebounce = setTimeout(runSearch, 200);
   }
 
+  function handleSearchKeydown(event) {
+    if (event.key !== 'Enter') return;
+    if (!searchQuery.trim() || searchStatus === 'loading' || !searchResults.length) return;
+    event.preventDefault();
+    void jumpToSearchResult(searchResults[0]);
+  }
+
   async function runSearch() {
     if (!searchQuery.trim()) {
       searchResults = [];
@@ -628,6 +944,13 @@
     await selectSession(result.sessionId);
     await tick();
     highlightMessage(result.id);
+  }
+
+  function scrollToLatestMessage({ smooth = false } = {}) {
+    if (typeof document === 'undefined') return;
+    const node = document.querySelector('.message-list article:last-child');
+    if (!node) return;
+    node.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'end' });
   }
 
   function highlightMessage(messageId) {
@@ -656,62 +979,134 @@
   }
 
   $: selectedSession = findSession(selectedSessionId);
+  $: syncRoutingDraftFromSession(selectedSession);
+  $: gatewayStatusPill = statusPills[gateway.status] || statusPills.degraded;
+  $: normalizedRoutingAgentId = (routingAgentId || '').trim() || 'main';
+  $: normalizedRoutingDisplayName = (routingAgentDisplayName || '').trim() || normalizedRoutingAgentId;
+  $: routingDirty = Boolean(selectedSession) && (
+    normalizedRoutingAgentId !== (selectedSession?.agentId || 'main') ||
+    normalizedRoutingDisplayName !== (selectedSession?.agentDisplayName || 'Primary')
+  );
   $: selectedSessionIsGateway = isGatewaySessionId(selectedSessionId);
   $: sendDisabled = !composerValue.trim() || sendingMessage || (selectedSessionIsGateway && gateway.status === 'offline');
   $: composerGatewayStatus = selectedSessionIsGateway
     ? (gateway.status === 'offline' ? 'Gateway offline' : `Gateway ${gateway.status}`)
-    : 'Local session';
+    : 'Local chat';
+  $: contextItems = [
+    { label: 'Channel', value: selectedSession?.channel || 'Unknown' },
+    { label: 'Chat ID', value: selectedSession?.id || '—' },
+    {
+      label: 'Routing',
+      value: `${selectedSession?.agentDisplayName || 'Primary'} · ${selectedSession?.agentId || 'main'}`
+    },
+    { label: 'Safety', value: selectedSessionIsGateway ? 'Live · gateway' : 'Local cache' },
+    { label: 'Last activity', value: selectedSession?.lastMessageAt || 'Unknown' }
+  ];
 </script>
 
 <div class="app-frame">
-  <header class="top-bar">
-    <div class="gateway">
-      <div>
-        <p class="eyebrow">Gateway</p>
-        <strong>{gateway.name}</strong>
-      </div>
-      <div class="gateway-meta">
-        <span class={`pill ${statusPills[gateway.status].tone}`}>{statusPills[gateway.status].label}</span>
-        <span class="meta">{gateway.endpoint}</span>
-        <span class="meta">Last heartbeat · {gateway.heartbeat}</span>
-      </div>
-    </div>
-    <div class="top-actions">
-      <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
-      <button class="ghost" on:click={openLogsFolder}>Open logs</button>
-      <button class="primary" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
-        {syncInFlight ? 'Syncing…' : 'Sync chats'}
+  <header class="top-bar compact">
+    <button class="ghost gateway-toggle" on:click={() => (showGatewayDetails = !showGatewayDetails)}>
+      <span class={`pill ${gatewayStatusPill.tone}`}>{gatewayStatusPill.label}</span>
+      <span class="meta">Gateway · {gateway.heartbeat}</span>
+    </button>
+    <div class="top-actions compact">
+      <button class="ghost" on:click={() => hydrateGatewaySessions()} disabled={syncInFlight}>
+        {syncInFlight ? 'Syncing…' : 'Sync'}
       </button>
+      <button class="ghost" on:click={openLogsFolder}>Logs</button>
+      <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
     </div>
   </header>
 
-  <div class={`shell-grid ${sideRailOpen ? '' : 'rail-collapsed'}`}>
-    <aside class="session-rail" aria-label="Chat list">
-      {#each sections as section}
-        <div class="session-section">
-          <p class="section-label">{section.title}</p>
-          {#each section.sessions as session}
-            <button
-              class={`session-tile ${session.id === selectedSessionId ? 'active' : ''}`}
-              on:click={() => selectSession(session.id)}
-            >
-              <div class="tile-main">
-                <div>
-                  <div class="name-row">
-                    <span class="name">{session.name}</span>
-                    {#if session.unread}
-                      <span class="badge">{session.unread}</span>
-                    {/if}
-                  </div>
-                  <p class="preview">{session.preview}</p>
-                </div>
-                <span class={`chip ${session.chip}`}>{session.channel}</span>
+  {#if showGatewayDetails}
+    <section class="gateway-details" aria-label="Gateway details">
+      <strong>{gateway.name}</strong>
+      <span class="meta">{gateway.endpoint}</span>
+      <span class="meta">Last heartbeat · {gateway.heartbeat}</span>
+    </section>
+  {/if}
+
+  <div class={`shell-grid ${chatRailOpen ? '' : 'chat-rail-collapsed'} ${sideRailOpen ? '' : 'side-rail-collapsed'}`}>
+    <aside class="chat-rail" aria-label="Chat list">
+      <div class="chat-rail-header">
+        <strong>OpenClaw Chat</strong>
+        <button class="ghost rail-collapse" on:click={() => (chatRailOpen = false)}>Hide</button>
+      </div>
+      <button class="primary new-chat" on:click={createNewChat}>New chat</button>
+
+      <div class="left-nav" role="tablist" aria-label="Primary navigation">
+        <button class={leftNav === 'chats' ? 'active' : ''} on:click={() => (leftNav = 'chats')}>Chats</button>
+        <button class={leftNav === 'agents' ? 'active' : ''} on:click={() => (leftNav = 'agents')}>Agents</button>
+      </div>
+
+      {#if leftNav === 'agents'}
+        <div class="agent-list">
+          {#if availableAgents.length}
+            {#each availableAgents as agent}
+              <div class="agent-row">
+                <strong>{agent.displayName || agent.id}</strong>
+                <span class="meta">{agent.id}</span>
               </div>
-              <span class={`status-dot ${session.status}`}></span>
-            </button>
-          {/each}
+            {/each}
+          {:else}
+            <p class="meta">No agents loaded.</p>
+          {/if}
         </div>
-      {/each}
+      {:else}
+        <p class="section-label">Recent chats</p>
+        {#each sections as section}
+          <div class="chat-section">
+            {#each section.sessions as session}
+              <div
+                class={`chat-tile ${session.id === selectedSessionId ? 'active' : ''}`}
+                role="button"
+                tabindex="0"
+                on:click={() => selectSession(session.id)}
+                on:keydown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    selectSession(session.id);
+                  }
+                }}
+              >
+                <div class="tile-main">
+                  <div>
+                    <div class="name-row">
+                      <span class="name">{session.name}</span>
+                      {#if session.unread}
+                        <span class="badge">{session.unread}</span>
+                      {/if}
+                    </div>
+                    <p class="preview">{session.preview}</p>
+                    <p class="meta tile-time">{session.lastMessageAt || 'Unknown activity'}</p>
+                  </div>
+                  <div class="tile-meta">
+                    <span class={`chip ${session.chip}`}>{session.channel}</span>
+                    <span class="agent-pill" title={`Agent: ${session.agentId || 'main'}`}>
+                      {session.agentDisplayName || session.agentId || 'Primary'}
+                    </span>
+                  </div>
+                </div>
+                <div class="tile-actions">
+                  <button class="ghost overflow" aria-label="Chat actions" on:click={(event) => toggleChatMenu(event, session.id)}>⋯</button>
+                  {#if openChatMenuId === session.id}
+                    <div class="chat-menu" role="menu" tabindex="-1" aria-label="Chat actions" on:pointerdown|stopPropagation>
+                      <button class="ghost" on:click={() => { copyCurrentChatId(session.id); openChatMenuId = null; }}>Copy chat ID</button>
+                      <button class="ghost" on:click={() => { openChatMenuId = null; }}>Mute chat</button>
+                    </div>
+                  {/if}
+                  <span class={`status-dot ${session.status}`}></span>
+                </div>
+              </div>
+            {/each}
+          </div>
+        {/each}
+      {/if}
+
+      <footer class="chat-rail-footer">
+        <button class="ghost" on:click={() => (showSettings = true)}>Settings</button>
+      </footer>
     </aside>
 
     <section class="timeline-area" aria-label="Conversation timeline">
@@ -719,6 +1114,26 @@
         <div>
           <p class="eyebrow">Current chat</p>
           <h2>{selectedSession?.name ?? 'Chat'}</h2>
+          <div class="header-agent-row">
+            <span class="header-agent-pill" title={`Agent: ${selectedSession?.agentId || 'main'}`}>
+              Agent · {selectedSession?.agentDisplayName || selectedSession?.agentId || 'Primary'}
+            </span>
+            <select
+              class="header-agent-select"
+              value={normalizedRoutingAgentId}
+              on:change={quickSwitchHeaderAgent}
+              disabled={routingSaving || !availableAgents.length}
+              aria-label="Switch active agent"
+            >
+              {#if !availableAgents.length}
+                <option value={normalizedRoutingAgentId}>{selectedSession?.agentDisplayName || selectedSession?.agentId || 'Primary'}</option>
+              {:else}
+                {#each availableAgents as agent}
+                  <option value={agent.id}>{agent.displayName || agent.id}</option>
+                {/each}
+              {/if}
+            </select>
+          </div>
         </div>
         <div class="timeline-actions">
           <input
@@ -729,8 +1144,13 @@
             value={searchQuery}
             bind:this={searchInputEl}
             on:input={handleSearchInput}
+            on:keydown={handleSearchKeydown}
           />
           <button class="ghost" on:click={focusSearchInput}>Jump ⌘K</button>
+          <button class="ghost" on:click={focusComposerInput}>Compose ⌘⇧L</button>
+          <button class="ghost" on:click={() => (chatRailOpen = !chatRailOpen)}>
+            {chatRailOpen ? 'Hide chats' : 'Show chats'}
+          </button>
           <button class="ghost" on:click={() => (sideRailOpen = !sideRailOpen)}>
             {sideRailOpen ? 'Hide panel' : 'Show panel'}
           </button>
@@ -748,7 +1168,7 @@
           {:else}
             {#each searchResults as result}
               <button class="search-hit" on:click={() => jumpToSearchResult(result)}>
-                <span class="hit-session">{result.sessionName} · {result.sessionChannel}</span>
+                <span class="hit-chat">{result.sessionName} · {result.sessionChannel}</span>
                 <span class="hit-excerpt" aria-label={`Snippet from ${result.author}`}>
                   {@html result.snippet}
                 </span>
@@ -773,7 +1193,7 @@
       {#if loading}
         <div class="loading-state">Loading conversation…</div>
       {:else if !messages.length}
-        <div class="empty-state">No messages in this session yet.</div>
+        <div class="empty-state">No messages in this chat yet.</div>
       {:else}
         <div class="message-list">
           {#each messages as message}
@@ -809,6 +1229,7 @@
             placeholder="Write a message, /command, or paste logs"
             value={composerValue}
             rows="2"
+            bind:this={composerInputEl}
             on:input={handleComposerInput}
             on:keydown={handleComposerKeydown}
           ></textarea>
@@ -828,7 +1249,7 @@
     </section>
 
     {#if sideRailOpen}
-      <aside class="side-rail" aria-label="Session context">
+      <aside class="side-rail" aria-label="Chat context">
         <div class="tab-strip">
           {#each rightTabs as tab}
             <button
@@ -850,6 +1271,44 @@
                 </div>
               {/each}
             </dl>
+            {#if selectedSession}
+              <div class="routing-form">
+                <label>
+                  <span>Agent display name</span>
+                  <input type="text" bind:value={routingAgentDisplayName} placeholder="Primary" />
+                </label>
+                <label>
+                  <span>Agent ID</span>
+                  <input type="text" bind:value={routingAgentId} placeholder="main" list="agent-id-suggestions" />
+                </label>
+                <datalist id="agent-id-suggestions">
+                  {#each availableAgents as agent}
+                    <option value={agent.id}>{agent.displayName}</option>
+                  {/each}
+                </datalist>
+                {#if availableAgents.length}
+                  <p class="meta">Available agents: {availableAgents.map((agent) => agent.id).join(', ')}</p>
+                {/if}
+                <div class="composer-controls">
+                  <button class="ghost" on:click={copyCurrentChatId}>
+                    {copyChatIdState === 'copied' ? 'Copied chat ID' : copyChatIdState === 'error' ? 'Copy failed' : 'Copy chat ID'}
+                  </button>
+                  <button class="ghost" on:click={() => hydrateAvailableAgents()} disabled={agentsLoading}>
+                    {agentsLoading ? 'Refreshing…' : 'Refresh agents'}
+                  </button>
+                  <button
+                    class="ghost"
+                    on:click={() => syncRoutingDraftFromSession(selectedSession)}
+                    disabled={!routingDirty || routingSaving}
+                  >
+                    Revert
+                  </button>
+                  <button class="primary" on:click={saveSessionRouting} disabled={routingSaving || !routingDirty}>
+                    {routingSaving ? 'Saving…' : 'Save routing'}
+                  </button>
+                </div>
+              </div>
+            {/if}
           {:else if activeRightTab === 'runs'}
             <div class="runs-stack">
               {#each runs as run}

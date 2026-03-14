@@ -13,6 +13,8 @@ contextBridge.exposeInMainWorld('chatDesktop', {
     searchMessages: (query) => ipcRenderer.invoke('data:search', query),
     getComposerDrafts: () => ipcRenderer.invoke('data:get-composer-drafts'),
     setComposerDrafts: (drafts) => ipcRenderer.invoke('data:set-composer-drafts', drafts),
+    setSessionAgent: (payload) => ipcRenderer.invoke('data:set-session-agent', payload),
+    listAgents: () => ipcRenderer.invoke('data:list-agents'),
     reset: () => ipcRenderer.invoke('data:reset'),
     syncGatewaySessions: () => ipcRenderer.invoke('data:sync-gateway-sessions'),
     sendMessage: (payload) => ipcRenderer.invoke('data:send-message', payload)
