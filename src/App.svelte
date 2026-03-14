@@ -269,7 +269,23 @@
     }
 
     const minutes = Math.floor(seconds / 60);
-    gateway = { ...gateway, heartbeat: `${minutes}m ago` };
+    if (minutes < 60) {
+      gateway = { ...gateway, heartbeat: `${minutes}m ago` };
+      return;
+    }
+
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) {
+      const remainderMinutes = minutes % 60;
+      gateway = {
+        ...gateway,
+        heartbeat: remainderMinutes ? `${hours}h ${remainderMinutes}m ago` : `${hours}h ago`
+      };
+      return;
+    }
+
+    const days = Math.floor(hours / 24);
+    gateway = { ...gateway, heartbeat: days === 1 ? '1 day ago' : `${days} days ago` };
   }
 
   async function openLogsFolder() {
