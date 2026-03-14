@@ -56,6 +56,7 @@ Output:
 
 - `⌘/Ctrl + K` — focus search
 - `⌘/Ctrl + F` — focus search
+- `Enter` (while search results are open) — jump to top match
 - `⌘/Ctrl + ,` — open settings
 - `⌘/Ctrl + Shift + R` — sync chats
 - `⌘/Ctrl + Shift + L` — focus composer

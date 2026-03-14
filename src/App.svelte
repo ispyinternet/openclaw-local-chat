@@ -846,6 +846,13 @@
     searchDebounce = setTimeout(runSearch, 200);
   }
 
+  function handleSearchKeydown(event) {
+    if (event.key !== 'Enter') return;
+    if (!searchQuery.trim() || searchStatus === 'loading' || !searchResults.length) return;
+    event.preventDefault();
+    void jumpToSearchResult(searchResults[0]);
+  }
+
   async function runSearch() {
     if (!searchQuery.trim()) {
       searchResults = [];
@@ -1005,6 +1012,7 @@
             value={searchQuery}
             bind:this={searchInputEl}
             on:input={handleSearchInput}
+            on:keydown={handleSearchKeydown}
           />
           <button class="ghost" on:click={focusSearchInput}>Jump ⌘K</button>
           <button class="ghost" on:click={focusComposerInput}>Compose ⌘⇧L</button>
